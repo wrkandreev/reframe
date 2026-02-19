@@ -1,0 +1,17 @@
+# Runtime/generated
+thumbs/*
+!thumbs/.gitkeep
+photos/*
+!photos/.gitkeep
+data/last_indexed.txt
+
+# OS/editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Logs/temp
+*.log
