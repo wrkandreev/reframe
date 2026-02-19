@@ -49,6 +49,7 @@ foreach ($categories as $categoryName => &$images) {
 
         $image['thumb_path'] = $thumbWebPath;
         $image['full_path'] = '?action=image&category=' . rawurlencode($categoryName) . '&file=' . rawurlencode($image['filename']);
+        $image['title'] = titleFromFilename($image['filename']);
         $image['mtime'] = $sourceMtime;
     }
 
@@ -115,14 +116,15 @@ if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories
                         <button
                             class="thumb-card js-thumb"
                             data-full="<?= htmlspecialchars($img['full_path'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
-                            data-title="<?= htmlspecialchars($img['filename'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+                            data-title="<?= htmlspecialchars($img['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
                             type="button"
                         >
                             <img
                                 src="<?= htmlspecialchars($img['thumb_path'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
-                                alt="<?= htmlspecialchars($img['filename'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+                                alt="<?= htmlspecialchars($img['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
                                 loading="lazy"
                             >
+                            <span class="thumb-title"><?= htmlspecialchars($img['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span>
                         </button>
                     <?php endforeach; ?>
                 </div>
@@ -140,6 +142,7 @@ if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories
     <div class="lightbox-content">
         <button class="lightbox-close js-close" type="button" aria-label="Закрыть">×</button>
         <img id="lightboxImage" src="" alt="">
+        <div id="lightboxTitle" class="lightbox-title"></div>
     </div>
 </div>
 
@@ -173,6 +176,24 @@ function serveImage(string $photosDir): never
 
     readfile($path);
     exit;
+}
+
+function titleFromFilename(string $filename): string
+{
+    $name = pathinfo($filename, PATHINFO_FILENAME);
+    $name = str_replace(['_', '-'], ' ', $name);
+    $name = preg_replace('/\s+/', ' ', $name) ?? $name;
+    $name = trim($name);
+
+    if ($name === '') {
+        return $filename;
+    }
+
+    if (function_exists('mb_convert_case')) {
+        return mb_convert_case($name, MB_CASE_TITLE, 'UTF-8');
+    }
+
+    return ucwords(strtolower($name));
 }
 
 function ensureDirectories(array $dirs): void

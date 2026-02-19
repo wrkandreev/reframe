@@ -1,8 +1,9 @@
 (() => {
   const lightbox = document.getElementById('lightbox');
   const lightboxImage = document.getElementById('lightboxImage');
+  const lightboxTitle = document.getElementById('lightboxTitle');
 
-  if (!lightbox || !lightboxImage) {
+  if (!lightbox || !lightboxImage || !lightboxTitle) {
     return;
   }
 
@@ -37,6 +38,7 @@
 
       lightboxImage.src = full;
       lightboxImage.alt = title;
+      lightboxTitle.textContent = title;
       lightbox.hidden = false;
       document.body.style.overflow = 'hidden';
     });
@@ -49,6 +51,7 @@
   function closeLightbox() {
     lightbox.hidden = true;
     lightboxImage.src = '';
+    lightboxTitle.textContent = '';
     document.body.style.overflow = '';
   }
 })();

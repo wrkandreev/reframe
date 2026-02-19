@@ -124,6 +124,7 @@ h2 {
     background: #fff;
     padding: 0;
     cursor: pointer;
+    text-align: left;
     transition: transform .15s ease, box-shadow .15s ease;
 }
 
@@ -137,6 +138,16 @@ h2 {
     display: block;
     aspect-ratio: 3 / 2;
     object-fit: cover;
+}
+
+.thumb-title {
+    display: block;
+    padding: 10px 10px 12px;
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--text);
+    border-top: 1px solid var(--border);
+    background: #fff;
 }
 
 .empty {
@@ -186,6 +197,14 @@ h2 {
     object-fit: contain;
     border-radius: 10px;
     background: #020617;
+}
+
+.lightbox-title {
+    color: #e5e7eb;
+    font-size: 14px;
+    line-height: 1.4;
+    padding: 2px 4px 6px;
+    word-break: break-word;
 }
 
 .lightbox-link {
