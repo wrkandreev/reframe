@@ -82,6 +82,7 @@ if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Фотогалерея</title>
+    <link rel="icon" type="image/svg+xml" href="<?= htmlspecialchars(assetUrl('favicon.svg'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('style.css'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
 </head>
 <body>
@@ -150,6 +151,7 @@ if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories
 
     <footer class="footer">
         <small>Последняя индексация: <?= file_exists($lastIndexedFile) ? date('Y-m-d H:i:s', (int)trim((string)file_get_contents($lastIndexedFile))) : '—' ?></small>
+        <small class="footer-author">by <a href="https://t.me/andr33vru" target="_blank" rel="noopener noreferrer">andr33vru</a></small>
     </footer>
 </div>
 

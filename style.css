@@ -167,6 +167,26 @@ h2 {
 .footer {
     margin-top: 14px;
     color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.footer-author {
+    opacity: .72;
+    font-size: 12px;
+}
+
+.footer-author a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(107, 114, 128, .5);
+}
+
+.footer-author a:hover {
+    opacity: 1;
 }
 
 .lightbox {

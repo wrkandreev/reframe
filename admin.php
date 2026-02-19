@@ -185,6 +185,7 @@ $photos = $selectedCategory !== '' ? listPhotos($photosDir, $thumbsDir, $selecte
 <html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Админка галереи</title>
+<link rel="icon" type="image/svg+xml" href="<?= h(assetUrl('favicon.svg')) ?>">
 <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
 <style>
 .admin-wrap{max-width:1150px;margin:0 auto;padding:24px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}
