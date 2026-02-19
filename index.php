@@ -89,7 +89,7 @@ if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories
 <div class="app">
     <header class="topbar">
         <h1>Фотогалерея</h1>
-        <p class="subtitle">Категории и превью обновляются автоматически при каждом открытии страницы</p>
+        <p class="subtitle">Простая галерея, которая управляется через файловый менеджер.</p>
     </header>
 
     <?php if ($selectedCategory === null): ?>
