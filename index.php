@@ -10,8 +10,10 @@ $photosDir = $baseDir . '/photos';
 $thumbsDir = $baseDir . '/thumbs';
 $dataDir = $baseDir . '/data';
 $lastIndexedFile = $dataDir . '/last_indexed.txt';
+$sortFile = $dataDir . '/sort.json';
 
 ensureDirectories([$photosDir, $thumbsDir, $dataDir]);
+$sortData = loadSortData($sortFile);
 
 $action = $_GET['action'] ?? null;
 if ($action === 'image') {
@@ -21,7 +23,7 @@ if ($action === 'image') {
 $lastIndexedTimestamp = readLastIndexedTimestamp($lastIndexedFile);
 $maxTimestamp = $lastIndexedTimestamp;
 
-$categories = scanCategories($photosDir);
+$categories = scanCategories($photosDir, $sortData);
 
 foreach ($categories as $categoryName => &$images) {
     $categoryThumbDir = $thumbsDir . '/' . $categoryName;
@@ -54,7 +56,12 @@ foreach ($categories as $categoryName => &$images) {
     }
 
     usort($images, static function (array $a, array $b): int {
-        return $b['mtime'] <=> $a['mtime'];
+        $bySort = ($a['sort_index'] ?? 0) <=> ($b['sort_index'] ?? 0);
+        if ($bySort !== 0) {
+            return $bySort;
+        }
+
+        return ($b['mtime'] ?? 0) <=> ($a['mtime'] ?? 0);
     });
 }
 unset($images, $image);
@@ -215,9 +222,11 @@ function readLastIndexedTimestamp(string $path): int
     return ctype_digit($value) ? (int)$value : 0;
 }
 
-function scanCategories(string $photosDir): array
+function scanCategories(string $photosDir, array $sortData): array
 {
     $result = [];
+    $categorySortMap = (array)($sortData['categories'] ?? []);
+    $photoSortMap = (array)($sortData['photos'] ?? []);
 
     $entries = @scandir($photosDir) ?: [];
     foreach ($entries as $entry) {
@@ -245,14 +254,47 @@ function scanCategories(string $photosDir): array
             $images[] = [
                 'filename' => $filename,
                 'abs_path' => $absPath,
+                'sort_index' => (int)(($photoSortMap[$entry][$filename] ?? 1000)),
             ];
         }
 
         $result[$entry] = $images;
     }
 
-    ksort($result, SORT_NATURAL | SORT_FLAG_CASE);
+    uksort($result, static function (string $a, string $b) use ($categorySortMap): int {
+        $aSort = (int)($categorySortMap[$a] ?? 1000);
+        $bSort = (int)($categorySortMap[$b] ?? 1000);
+
+        if ($aSort !== $bSort) {
+            return $aSort <=> $bSort;
+        }
+
+        return strnatcasecmp($a, $b);
+    });
+
     return $result;
+}
+
+function loadSortData(string $sortFile): array
+{
+    if (!is_file($sortFile)) {
+        return ['categories' => [], 'photos' => []];
+    }
+
+    $json = file_get_contents($sortFile);
+    if ($json === false || trim($json) === '') {
+        return ['categories' => [], 'photos' => []];
+    }
+
+    $data = json_decode($json, true);
+    if (!is_array($data)) {
+        return ['categories' => [], 'photos' => []];
+    }
+
+    return [
+        'categories' => is_array($data['categories'] ?? null) ? $data['categories'] : [],
+        'photos' => is_array($data['photos'] ?? null) ? $data['photos'] : [],
+    ];
 }
 
 function isImage(string $path): bool
