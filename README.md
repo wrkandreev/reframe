@@ -6,7 +6,7 @@
 - при каждом открытии страницы проверяет, появились ли новые/обновлённые фото,
 - создаёт и обновляет превью в `thumbs/`,
 - показывает категории и фото в веб-интерфейсе,
-- открывает большую фотографию в лайтбоксе или в новой вкладке.
+- открывает большую фотографию в лайтбоксе.
 
 ## Структура
 
@@ -14,11 +14,13 @@
 photo-gallery/
 ├─ index.php              # основной скрипт: индексация + HTML
 ├─ style.css              # стили (material-like, строгий)
-├─ app.js                 # лайтбокс
-├─ photos/                # исходные фото по категориям (папкам)
-├─ thumbs/                # автогенерируемые превью
+├─ app.js                      # лайтбокс
+├─ deploy.php                  # webhook-триггер деплоя
+├─ deploy-config.php.example   # пример конфига webhook
+├─ photos/                     # исходные фото по категориям (папкам)
+├─ thumbs/                     # автогенерируемые превью
 └─ data/
-   └─ last_indexed.txt    # timestamp последней индексации
+   └─ last_indexed.txt         # timestamp последней индексации
 ```
 
 ## Как работает индексация
@@ -88,6 +90,27 @@ bash scripts/deploy.sh
 ```bash
 BRANCH=master bash scripts/deploy.sh
 ```
+
+## Удалённый запуск деплоя по ссылке (webhook)
+
+1. На хостинге создай конфиг из примера:
+
+```bash
+cp deploy-config.php.example deploy-config.php
+```
+
+2. Заполни в `deploy-config.php` минимум:
+- `token` (длинный секрет)
+- при желании `allowed_ips`
+- при желании `basic_auth_user/basic_auth_pass`
+
+3. Запуск деплоя:
+
+```text
+https://<домен>/deploy.php?token=<твой_секрет>
+```
+
+Рекомендация: включить IP whitelist и Basic Auth.
 
 ## Примечания
 

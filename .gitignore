@@ -13,5 +13,8 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Local secrets
+deploy-config.php
+
 # Logs/temp
 *.log
