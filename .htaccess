@@ -1,9 +1,10 @@
 RewriteEngine On
 
-# Force HTTPS
-RewriteCond %{SERVER_PORT} !^443$
-RewriteRule .* https://%{SERVER_NAME}%{REQUEST_URI} [R=301,L]
+# If behind reverse proxy (some shared hostings), trust X-Forwarded-Proto
+RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 
-# Force non-www
+# Force non-www on already HTTPS URL
 RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
 RewriteRule ^ https://%1%{REQUEST_URI} [R=301,L]
