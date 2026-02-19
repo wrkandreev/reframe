@@ -99,7 +99,16 @@ if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories
             <?php else: ?>
                 <div class="categories-grid">
                     <?php foreach ($categories as $categoryName => $images): ?>
+                        <?php $cover = $images[0]['thumb_path'] ?? null; ?>
                         <a class="category-card" href="?category=<?= urlencode($categoryName) ?>">
+                            <?php if ($cover): ?>
+                                <img
+                                    class="category-cover"
+                                    src="<?= htmlspecialchars($cover, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+                                    alt="<?= htmlspecialchars($categoryName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+                                    loading="lazy"
+                                >
+                            <?php endif; ?>
                             <span class="category-title"><?= htmlspecialchars($categoryName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span>
                             <span class="category-count"><?= count($images) ?> фото</span>
                         </a>

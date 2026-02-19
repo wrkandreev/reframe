@@ -88,10 +88,20 @@ h2 {
     background: var(--surface-soft);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 16px;
+    padding: 12px;
     text-decoration: none;
     color: var(--text);
     transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+
+.category-cover {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: block;
+    margin-bottom: 10px;
 }
 
 .category-card:hover {
