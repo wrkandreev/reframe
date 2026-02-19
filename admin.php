@@ -31,6 +31,8 @@ if ($tokenExpected === '' || !hash_equals($tokenExpected, $tokenIncoming)) {
 }
 
 $sortData = loadSortData($sortFile);
+$sortData = reconcileSortData($photosDir, $sortData);
+saveSortData($sortFile, $sortData);
 $message = '';
 $errors = [];
 
@@ -177,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $categories = listCategories($photosDir, $sortData);
 $selectedCategory = sanitizeCategoryName((string)($_GET['edit_category'] ?? ($_POST['category'] ?? '')));
-$photos = $selectedCategory !== '' ? listPhotos($photosDir, $selectedCategory, $sortData) : [];
+$photos = $selectedCategory !== '' ? listPhotos($photosDir, $thumbsDir, $selectedCategory, $sortData) : [];
 
 ?><!doctype html>
 <html lang="ru"><head>
@@ -249,9 +251,10 @@ $photos = $selectedCategory !== '' ? listPhotos($photosDir, $selectedCategory, $
     <?php elseif ($photos === []): ?>
       <p class="muted">В категории пока нет фото.</p>
     <?php else: ?>
-      <table class="table"><tr><th>Фото</th><th>Порядок</th><th>Новое имя (без расширения)</th><th>Действия</th></tr>
+      <table class="table"><tr><th>Превью</th><th>Фото</th><th>Порядок</th><th>Новое имя (без расширения)</th><th>Действия</th></tr>
       <?php foreach ($photos as $p): ?>
         <tr>
+          <td><?php if ($p['thumb'] !== ''): ?><img src="<?= h($p['thumb']) ?>" alt="" style="width:78px;height:52px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb"><?php endif; ?></td>
           <td><?= h($p['file']) ?></td>
           <td>
             <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&edit_category=<?= urlencode($selectedCategory) ?>">
@@ -283,7 +286,27 @@ function loadSortData(string $file): array { if(!is_file($file)) return ['catego
 function saveSortData(string $file, array $data): void { file_put_contents($file, json_encode($data, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT)); }
 function nextSortIndex(array $map): int { return $map===[]?10:((int)max(array_map('intval',$map))+10); }
 function listCategories(string $photosDir, array $sortData): array { $out=[]; foreach((@scandir($photosDir)?:[]) as $x){ if($x==='.'||$x==='..')continue; if(is_dir($photosDir.'/'.$x))$out[]=$x; } usort($out, fn($a,$b)=>((int)($sortData['categories'][$a]??1000)<=> (int)($sortData['categories'][$b]??1000)) ?: strnatcasecmp($a,$b)); return $out; }
-function listPhotos(string $photosDir, string $category, array $sortData): array { $out=[]; $dir=$photosDir.'/'.$category; foreach((@scandir($dir)?:[]) as $f){ if($f==='.'||$f==='..')continue; $p=$dir.'/'.$f; if(is_file($p)&&isImageExt($f)) $out[]=['file'=>$f,'sort'=>(int)($sortData['photos'][$category][$f]??1000)]; } usort($out, fn($a,$b)=>($a['sort']<=>$b['sort']) ?: strnatcasecmp($a['file'],$b['file'])); return $out; }
+function listPhotos(string $photosDir, string $thumbsDir, string $category, array $sortData): array { $out=[]; $dir=$photosDir.'/'.$category; foreach((@scandir($dir)?:[]) as $f){ if($f==='.'||$f==='..')continue; $p=$dir.'/'.$f; if(!is_file($p)||!isImageExt($f)) continue; $thumbAbs=$thumbsDir.'/'.$category.'/'.pathinfo($f, PATHINFO_FILENAME).'.jpg'; $thumb=is_file($thumbAbs)?('thumbs/'.rawurlencode($category).'/'.rawurlencode(pathinfo($f, PATHINFO_FILENAME).'.jpg')):''; $out[]=['file'=>$f,'sort'=>(int)($sortData['photos'][$category][$f]??1000),'thumb'=>$thumb]; } usort($out, fn($a,$b)=>($a['sort']<=>$b['sort']) ?: strnatcasecmp($a['file'],$b['file'])); return $out; }
+
+function reconcileSortData(string $photosDir, array $sortData): array {
+    $clean=['categories'=>[],'photos'=>[]];
+    $cats=[];
+    foreach((@scandir($photosDir)?:[]) as $c){
+        if($c==='.'||$c==='..') continue;
+        if(!is_dir($photosDir.'/'.$c)) continue;
+        $cats[]=$c;
+    }
+    foreach($cats as $c){
+        $clean['categories'][$c]=(int)($sortData['categories'][$c] ?? 1000);
+        $clean['photos'][$c]=[];
+        foreach((@scandir($photosDir.'/'.$c)?:[]) as $f){
+            if($f==='.'||$f==='..') continue;
+            if(!is_file($photosDir.'/'.$c.'/'.$f) || !isImageExt($f)) continue;
+            $clean['photos'][$c][$f]=(int)($sortData['photos'][$c][$f] ?? 1000);
+        }
+    }
+    return $clean;
+}
 function isImageExt(string $file): bool { return in_array(strtolower(pathinfo($file, PATHINFO_EXTENSION)), ['jpg','jpeg','png','webp','gif'], true); }
 function rrmdir(string $dir): void { if(!is_dir($dir)) return; $it=scandir($dir)?:[]; foreach($it as $x){ if($x==='.'||$x==='..')continue; $p=$dir.'/'.$x; if(is_dir($p)) rrmdir($p); else @unlink($p);} @rmdir($dir); }
 function uniqueFileNameForRename(string $dir,string $base,string $ext,string $current): string{ $n=0; do{ $cand=$n===0?"{$base}.{$ext}":"{$base}_{$n}.{$ext}"; if($cand===$current||!file_exists($dir.'/'.$cand)) return $cand; $n++; }while(true); }
