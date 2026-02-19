@@ -185,7 +185,7 @@ $photos = $selectedCategory !== '' ? listPhotos($photosDir, $thumbsDir, $selecte
 <html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Админка галереи</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
 <style>
 .admin-wrap{max-width:1150px;margin:0 auto;padding:24px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}
 .grid{display:grid;gap:12px;grid-template-columns:1fr 1fr}.full{grid-column:1/-1}.in{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px}
@@ -280,6 +280,7 @@ $photos = $selectedCategory !== '' ? listPhotos($photosDir, $thumbsDir, $selecte
 </div></div></body></html>
 <?php
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+function assetUrl(string $relativePath): string { $file=__DIR__ . '/' . ltrim($relativePath, '/'); $v=is_file($file)?(string)filemtime($file):(string)time(); return $relativePath . '?v=' . rawurlencode($v); }
 function sanitizeCategoryName(string $name): string { $name=trim($name); $name=preg_replace('/[^\p{L}\p{N}\s._-]+/u','',$name)??''; return trim($name,". \t\n\r\0\x0B"); }
 function sanitizeFileBase(string $name): string { $name=trim($name); $name=preg_replace('/[^\p{L}\p{N}._-]+/u','_',$name)??''; return trim($name,'._-'); }
 function loadSortData(string $file): array { if(!is_file($file)) return ['categories'=>[],'photos'=>[]]; $d=json_decode((string)file_get_contents($file),true); return is_array($d)?['categories'=>(array)($d['categories']??[]),'photos'=>(array)($d['photos']??[])]:['categories'=>[],'photos'=>[]]; }

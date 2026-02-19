@@ -82,7 +82,7 @@ if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Фотогалерея</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('style.css'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
 </head>
 <body>
 <div class="app">
@@ -162,7 +162,7 @@ if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories
     </div>
 </div>
 
-<script src="app.js" defer></script>
+<script src="<?= htmlspecialchars(assetUrl('app.js'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" defer></script>
 </body>
 </html>
 <?php
@@ -282,6 +282,13 @@ function scanCategories(string $photosDir, array $sortData): array
     });
 
     return $result;
+}
+
+function assetUrl(string $relativePath): string
+{
+    $file = __DIR__ . '/' . ltrim($relativePath, '/');
+    $v = is_file($file) ? (string)filemtime($file) : (string)time();
+    return $relativePath . '?v=' . rawurlencode($v);
 }
 
 function loadSortData(string $sortFile): array
