@@ -177,9 +177,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $categories = listCategories($photosDir, $sortData);
 $selectedCategory = sanitizeCategoryName((string)($_GET['edit_category'] ?? ($_POST['category'] ?? '')));
-if ($selectedCategory === '' && $categories !== []) {
-    $selectedCategory = $categories[0];
-}
 $photos = $selectedCategory !== '' ? listPhotos($photosDir, $selectedCategory, $sortData) : [];
 
 ?><!doctype html>
@@ -207,20 +204,6 @@ $photos = $selectedCategory !== '' ? listPhotos($photosDir, $selectedCategory, $
       <input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="action" value="create_category">
       <input class="in" name="category_name" placeholder="например: Тест" required>
       <p style="margin-top:8px"><button class="btn" type="submit">Создать</button></p>
-    </form>
-  </section>
-
-  <section class="card">
-    <h3>Загрузка фото</h3>
-    <form method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>">
-      <input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="action" value="upload">
-      <select class="in" name="category" required>
-        <option value="">— Категория —</option>
-        <?php foreach ($categories as $c): ?><option value="<?= h($c) ?>" <?= $c===$selectedCategory?'selected':'' ?>><?= h($c) ?></option><?php endforeach; ?>
-      </select>
-      <p><input type="file" name="photos[]" accept="image/jpeg,image/png,image/webp,image/gif" multiple required></p>
-      <button class="btn" type="submit">Загрузить</button>
-      <p class="muted">Только JPG/PNG/WEBP/GIF, максимум 3 МБ на файл.</p>
     </form>
   </section>
 
@@ -252,8 +235,17 @@ $photos = $selectedCategory !== '' ? listPhotos($photosDir, $selectedCategory, $
 
   <section class="card full">
     <h3>Фото в категории: <?= h($selectedCategory ?: '—') ?></h3>
+    <?php if ($selectedCategory !== ''): ?>
+      <form method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&edit_category=<?= urlencode($selectedCategory) ?>" style="margin:10px 0 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="action" value="upload">
+        <input type="hidden" name="category" value="<?= h($selectedCategory) ?>">
+        <input type="file" name="photos[]" accept="image/jpeg,image/png,image/webp,image/gif" multiple required>
+        <button class="btn" type="submit">Загрузить в «<?= h($selectedCategory) ?>»</button>
+      </form>
+      <p class="muted" style="margin-top:-6px">Только JPG/PNG/WEBP/GIF, максимум 3 МБ на файл.</p>
+    <?php endif; ?>
     <?php if ($selectedCategory === ''): ?>
-      <p class="muted">Нет категорий.</p>
+      <p class="muted">Сначала выбери категорию в блоке выше (клик по её названию).</p>
     <?php elseif ($photos === []): ?>
       <p class="muted">В категории пока нет фото.</p>
     <?php else: ?>
