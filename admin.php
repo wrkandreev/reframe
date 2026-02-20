@@ -45,6 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!sectionById($sectionId)) throw new RuntimeException('Раздел не найден');
             sectionUpdate($sectionId, $name, $sort);
             $message = 'Раздел обновлён';
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'message' => $message], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
         }
 
         if ($action === 'delete_section') {
@@ -52,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($sectionId < 1) throw new RuntimeException('Некорректный раздел');
             if (!sectionById($sectionId)) throw new RuntimeException('Раздел не найден');
 
+            removeSectionImageFiles($sectionId);
             sectionDelete($sectionId);
             deleteSectionStorage($sectionId);
             $message = 'Раздел удалён';
@@ -173,9 +179,12 @@ $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 $commenters = commentersAll();
 $latestComments = commentsLatest(80);
 $welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
-$adminMode = (string)($_GET['mode'] ?? 'media');
-if (!in_array($adminMode, ['media', 'comments', 'welcome'], true)) {
-    $adminMode = 'media';
+$adminMode = (string)($_GET['mode'] ?? 'photos');
+if ($adminMode === 'media') {
+    $adminMode = 'photos';
+}
+if (!in_array($adminMode, ['sections', 'photos', 'comments', 'welcome'], true)) {
+    $adminMode = 'photos';
 }
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
@@ -300,6 +309,30 @@ function deleteDirRecursive(string $dir): void
     @rmdir($dir);
 }
 
+function removeSectionImageFiles(int $sectionId): void
+{
+    $st = db()->prepare('SELECT pf.file_path
+                         FROM photo_files pf
+                         JOIN photos p ON p.id = pf.photo_id
+                         WHERE p.section_id = :sid');
+    $st->execute(['sid' => $sectionId]);
+    $paths = $st->fetchAll(PDO::FETCH_COLUMN);
+    if (!is_array($paths)) {
+        return;
+    }
+
+    foreach ($paths as $path) {
+        if (!is_string($path) || $path === '') {
+            continue;
+        }
+
+        $abs = __DIR__ . '/' . ltrim($path, '/');
+        if (is_file($abs)) {
+            @unlink($abs);
+        }
+    }
+}
+
 function nextSortOrderForSection(int $sectionId): int
 {
     $st = db()->prepare('SELECT COALESCE(MAX(sort_order),0)+10 FROM photos WHERE section_id=:sid');
@@ -341,43 +374,25 @@ function nextUniqueCodeName(string $base): string
       <section class="card">
         <h3>Меню</h3>
         <div class="sec">
-          <a class="<?= $adminMode==='media'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=media<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Разделы и фото</a>
+          <a class="<?= $adminMode==='sections'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=sections<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Разделы</a>
+          <a class="<?= $adminMode==='photos'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Фото</a>
           <a class="<?= $adminMode==='welcome'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">Приветственное сообщение</a>
           <a class="<?= $adminMode==='comments'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Комментаторы и комментарии</a>
         </div>
       </section>
 
-      <?php if ($adminMode === 'media'): ?>
+      <?php if ($adminMode === 'sections' || $adminMode === 'photos'): ?>
       <section class="card">
-        <h3>Разделы</h3>
+        <h3><?= $adminMode === 'sections' ? 'Разделы' : 'Выбор раздела для фото' ?></h3>
         <div class="sec">
           <?php foreach($sections as $s): ?>
-            <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$s['id'] ?>"><?= h((string)$s['name']) ?> <span class="small">(<?= (int)$s['photos_count'] ?>)</span></a>
+            <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=<?= h($adminMode) ?>&section_id=<?= (int)$s['id'] ?>"><?= h((string)$s['name']) ?> <span class="small">(<?= (int)$s['photos_count'] ?>)</span></a>
           <?php endforeach; ?>
         </div>
 
-        <?php if ($activeSection): ?>
-          <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
-          <h4 style="margin:0 0 8px">Редактировать выбранный</h4>
-          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media&section_id=<?= (int)$activeSectionId ?>">
-            <input type="hidden" name="action" value="update_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
-            <p><input class="in" name="name" value="<?= h((string)$activeSection['name']) ?>" required></p>
-            <p><input class="in" type="number" name="sort_order" value="<?= (int)$activeSection['sort_order'] ?>"></p>
-            <button class="btn" type="submit">Переименовать</button>
-          </form>
-          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media" onsubmit="return confirm('Удалить раздел и все его фото?')" style="margin-top:8px">
-            <input type="hidden" name="action" value="delete_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
-            <button class="btn btn-danger" type="submit">Удалить раздел</button>
-          </form>
+        <?php if ($adminMode === 'photos' && !$activeSection): ?>
+          <div class="small" style="margin-top:8px">Создай раздел во вкладке "Разделы", чтобы загружать фото.</div>
         <?php endif; ?>
-
-        <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
-        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media">
-          <input type="hidden" name="action" value="create_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
-          <p><input class="in" name="name" placeholder="Новый раздел" required></p>
-          <p><input class="in" type="number" name="sort_order" value="1000"></p>
-          <button class="btn" type="submit">Создать раздел</button>
-        </form>
       </section>
 
       <?php endif; ?>
@@ -407,11 +422,42 @@ function nextUniqueCodeName(string $base): string
       </section>
       <?php endif; ?>
 
-      <?php if ($adminMode === 'media'): ?>
+      <?php if ($adminMode === 'sections'): ?>
+      <section class="card">
+        <h3>Редактировать выбранный раздел</h3>
+        <?php if ($activeSection): ?>
+          <form class="js-section-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections&section_id=<?= (int)$activeSectionId ?>">
+            <input type="hidden" name="action" value="update_section"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
+            <p><input class="in" name="name" value="<?= h((string)$activeSection['name']) ?>" required></p>
+            <p><input class="in" type="number" name="sort_order" value="<?= (int)$activeSection['sort_order'] ?>"></p>
+            <div class="small js-save-status">Сохраняется автоматически при выходе из поля.</div>
+          </form>
+          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections" onsubmit="return confirmSectionDelete()" style="margin-top:8px">
+            <input type="hidden" name="action" value="delete_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
+            <button class="btn btn-danger" type="submit">Удалить раздел</button>
+          </form>
+        <?php else: ?>
+          <p class="small">Нет разделов для редактирования.</p>
+        <?php endif; ?>
+      </section>
+
+      <section class="card">
+        <h3>Создать раздел</h3>
+        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections">
+          <input type="hidden" name="action" value="create_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+          <p><input class="in" name="name" placeholder="Новый раздел" required></p>
+          <p><input class="in" type="number" name="sort_order" value="1000"></p>
+          <button class="btn" type="submit">Создать раздел</button>
+        </form>
+      </section>
+
+      <?php endif; ?>
+
+      <?php if ($adminMode === 'photos'): ?>
       <section class="card">
         <h3>Загрузка фото “до” в выбранный раздел</h3>
         <?php if ($activeSectionId > 0): ?>
-          <form method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>">
+          <form method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&mode=photos&section_id=<?= (int)$activeSectionId ?>">
             <input type="hidden" name="action" value="upload_before_bulk"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
             <p><input type="file" name="before_bulk[]" accept="image/jpeg,image/png,image/webp,image/gif" multiple required></p>
             <button class="btn" type="submit">Загрузить массово</button>
@@ -431,7 +477,7 @@ function nextUniqueCodeName(string $base): string
               <td><?php if (!empty($p['before_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
               <td><?php if (!empty($p['after_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
               <td>
-                <form class="js-photo-form" method="post" enctype="multipart/form-data" action="admin.php?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=media">
+                <form class="js-photo-form" method="post" enctype="multipart/form-data" action="admin.php?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                   <input type="hidden" name="action" value="photo_update"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <p><input class="in" name="code_name" value="<?= h((string)$p['code_name']) ?>"></p>
                   <p><input class="in" type="number" name="sort_order" value="<?= (int)$p['sort_order'] ?>"></p>
@@ -441,7 +487,7 @@ function nextUniqueCodeName(string $base): string
                 </form>
               </td>
               <td>
-                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=media" onsubmit="return confirm('Удалить фото?')">
+                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos" onsubmit="return confirm('Удалить фото?')">
                   <input type="hidden" name="action" value="photo_delete"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <button class="btn btn-danger" type="submit">Удалить</button>
                 </form>
@@ -507,9 +553,8 @@ function nextUniqueCodeName(string $base): string
 </div>
 <script>
 (() => {
-  const forms = document.querySelectorAll('.js-photo-form');
-
-  forms.forEach((form) => {
+  const setupAutosave = (formSelector) => {
+    document.querySelectorAll(formSelector).forEach((form) => {
     let dirty = false;
     let busy = false;
     let timer = null;
@@ -592,7 +637,20 @@ function nextUniqueCodeName(string $base): string
         busy = false;
       }
     }
-  });
+    });
+  };
+
+  setupAutosave('.js-photo-form');
+  setupAutosave('.js-section-form');
+
+  window.confirmSectionDelete = () => {
+    const first = confirm('Удалить раздел?');
+    if (!first) {
+      return false;
+    }
+
+    return confirm('Будут удалены все фото в разделе (и версии "до", и версии "после"). Продолжить?');
+  };
 
   const lightbox = document.getElementById('lightbox');
   const img = document.getElementById('lightboxImage');
