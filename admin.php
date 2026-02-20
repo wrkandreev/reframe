@@ -24,6 +24,7 @@ $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? '');
+    $isAjax = (string)($_POST['ajax'] ?? '') === '1';
 
     try {
         if ($action === 'create_section') {
@@ -65,6 +66,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $message = 'Фото обновлено';
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'message' => $message], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
         }
 
         if ($action === 'photo_delete') {
@@ -109,6 +115,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } catch (Throwable $e) {
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
         $errors[] = $e->getMessage();
     }
 }
@@ -260,18 +272,18 @@ function nextUniqueCodeName(string $base): string
       <?php if ($adminMode === 'media'): ?>
       <section class="card">
         <h3>Разделы</h3>
-        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>">
-          <input type="hidden" name="action" value="create_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
-          <p><input class="in" name="name" placeholder="Новый раздел" required></p>
-          <p><input class="in" type="number" name="sort_order" value="1000"></p>
-          <button class="btn" type="submit">Создать раздел</button>
-        </form>
-        <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
         <div class="sec">
           <?php foreach($sections as $s): ?>
             <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$s['id'] ?>"><?= h((string)$s['name']) ?> <span class="small">(<?= (int)$s['photos_count'] ?>)</span></a>
           <?php endforeach; ?>
         </div>
+        <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
+        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media">
+          <input type="hidden" name="action" value="create_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+          <p><input class="in" name="name" placeholder="Новый раздел" required></p>
+          <p><input class="in" type="number" name="sort_order" value="1000"></p>
+          <button class="btn" type="submit">Создать раздел</button>
+        </form>
       </section>
 
       <?php endif; ?>
@@ -308,22 +320,23 @@ function nextUniqueCodeName(string $base): string
       <section class="card">
         <h3>Фото в разделе</h3>
         <table class="tbl">
-          <tr><th>Превью</th><th>Поля</th><th>Действия</th></tr>
+          <tr><th>До</th><th>После</th><th>Поля</th><th>Действия</th></tr>
           <?php foreach($photos as $p): ?>
             <tr>
-              <td><?php if (!empty($p['before_file_id'])): ?><img src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" style="width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
+              <td><?php if (!empty($p['before_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
+              <td><?php if (!empty($p['after_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
               <td>
-                <form method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>">
-                  <input type="hidden" name="action" value="photo_update"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
+                <form class="js-photo-form" method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=media">
+                  <input type="hidden" name="action" value="photo_update"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <p><input class="in" name="code_name" value="<?= h((string)$p['code_name']) ?>"></p>
                   <p><input class="in" type="number" name="sort_order" value="<?= (int)$p['sort_order'] ?>"></p>
                   <p><textarea class="in" name="description" placeholder="Комментарий"><?= h((string)($p['description'] ?? '')) ?></textarea></p>
                   <p class="small">Фото после (опционально): <input type="file" name="after" accept="image/jpeg,image/png,image/webp,image/gif"></p>
-                  <button class="btn" type="submit">Сохранить</button>
+                  <div class="small">Сохраняется автоматически при выходе из карточки.</div>
                 </form>
               </td>
               <td>
-                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>" onsubmit="return confirm('Удалить фото?')">
+                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=media" onsubmit="return confirm('Удалить фото?')">
                   <input type="hidden" name="action" value="photo_delete"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <button class="btn btn-danger" type="submit">Удалить</button>
                 </form>
@@ -341,7 +354,7 @@ function nextUniqueCodeName(string $base): string
         <table class="tbl"><tr><th>Пользователь</th><th>Действие</th></tr>
           <?php foreach($commenters as $u): ?>
             <tr><td><?= h((string)$u['display_name']) ?></td><td>
-              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>" onsubmit="return confirm('Удалить пользователя?')">
+              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить пользователя?')">
                 <input type="hidden" name="action" value="delete_commenter"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                 <button class="btn btn-danger" type="submit">Удалить доступ</button>
               </form>
@@ -356,7 +369,7 @@ function nextUniqueCodeName(string $base): string
               <td><?= h((string)($c['display_name'] ?? '—')) ?></td>
               <td><?= h((string)$c['comment_text']) ?></td>
               <td>
-                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>" onsubmit="return confirm('Удалить комментарий?')">
+                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить комментарий?')">
                   <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
                   <button class="btn btn-danger" type="submit">Удалить</button>
                 </form>
@@ -368,4 +381,69 @@ function nextUniqueCodeName(string $base): string
       <?php endif; ?>
     </main>
   </div>
-</div></body></html>
+</div>
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lightbox-backdrop js-close"></div>
+  <div class="lightbox-content">
+    <button class="lightbox-close js-close" type="button" aria-label="Закрыть">×</button>
+    <img id="lightboxImage" src="" alt="">
+  </div>
+</div>
+<script>
+(() => {
+  const forms = document.querySelectorAll('.js-photo-form');
+  forms.forEach((form) => {
+    let dirty = false;
+    let busy = false;
+    let timer = null;
+
+    const mark = () => { dirty = true; };
+    form.querySelectorAll('input,textarea,select').forEach((el) => {
+      el.addEventListener('input', mark);
+      el.addEventListener('change', () => { mark(); if (el.type === 'file') submitNow(); });
+    });
+
+    form.addEventListener('focusout', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (form.contains(document.activeElement)) return;
+        submitNow();
+      }, 120);
+    });
+
+    async function submitNow() {
+      if (!dirty || busy) return;
+      busy = true;
+      try {
+        const fd = new FormData(form);
+        const r = await fetch(form.action, { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!j.ok) console.warn(j.message || 'save failed');
+      } catch (e) {
+        console.warn('save failed', e);
+      } finally {
+        dirty = false;
+        busy = false;
+      }
+    }
+  });
+
+  const lightbox = document.getElementById('lightbox');
+  const img = document.getElementById('lightboxImage');
+  if (lightbox && img) {
+    document.querySelectorAll('.js-open').forEach((el) => {
+      el.addEventListener('click', () => {
+        const src = el.getAttribute('data-full');
+        if (!src) return;
+        img.src = src;
+        lightbox.hidden = false;
+        document.body.style.overflow = 'hidden';
+      });
+    });
+    lightbox.querySelectorAll('.js-close').forEach((el) => el.addEventListener('click', () => {
+      lightbox.hidden = true; img.src = ''; document.body.style.overflow = '';
+    }));
+  }
+})();
+</script>
+</body></html>
