@@ -332,7 +332,7 @@ function nextUniqueCodeName(string $base): string
                   <p><input class="in" type="number" name="sort_order" value="<?= (int)$p['sort_order'] ?>"></p>
                   <p><textarea class="in" name="description" placeholder="Комментарий"><?= h((string)($p['description'] ?? '')) ?></textarea></p>
                   <p class="small">Фото после (опционально): <input type="file" name="after" accept="image/jpeg,image/png,image/webp,image/gif"></p>
-                  <div class="small">Сохраняется автоматически при выходе из карточки.</div>
+                  <div class="small js-save-status">Сохраняется автоматически при выходе из карточки.</div>
                 </form>
               </td>
               <td>
@@ -392,37 +392,72 @@ function nextUniqueCodeName(string $base): string
 <script>
 (() => {
   const forms = document.querySelectorAll('.js-photo-form');
+
   forms.forEach((form) => {
     let dirty = false;
     let busy = false;
     let timer = null;
+    const status = form.querySelector('.js-save-status');
+    const ajaxInput = form.querySelector('input[name="ajax"]');
 
-    const mark = () => { dirty = true; };
+    const setStatus = (text, isError = false) => {
+      if (!status) return;
+      status.textContent = text;
+      status.style.color = isError ? '#b42318' : '#667085';
+    };
+
+    const mark = () => {
+      dirty = true;
+      setStatus('Есть несохранённые изменения…');
+    };
+
     form.querySelectorAll('input,textarea,select').forEach((el) => {
+      if (el.type === 'file') {
+        el.addEventListener('change', () => {
+          if (!el.files || el.files.length === 0) return;
+          if (ajaxInput) ajaxInput.value = '0';
+          setStatus('Загрузка файла…');
+          form.submit();
+        });
+        return;
+      }
+
       el.addEventListener('input', mark);
-      el.addEventListener('change', () => { mark(); if (el.type === 'file') submitNow(); });
+      el.addEventListener('change', mark);
+      el.addEventListener('blur', () => queueSave(80));
     });
 
-    form.addEventListener('focusout', () => {
+    form.addEventListener('focusout', () => queueSave(120));
+
+    function queueSave(delay) {
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (form.contains(document.activeElement)) return;
         submitNow();
-      }, 120);
-    });
+      }, delay);
+    }
 
     async function submitNow() {
       if (!dirty || busy) return;
       busy = true;
+      setStatus('Сохраняю…');
+
       try {
+        if (ajaxInput) ajaxInput.value = '1';
         const fd = new FormData(form);
         const r = await fetch(form.action, { method: 'POST', body: fd });
         const j = await r.json();
-        if (!j.ok) console.warn(j.message || 'save failed');
+
+        if (!r.ok || !j.ok) {
+          throw new Error(j?.message || 'Ошибка сохранения');
+        }
+
+        dirty = false;
+        setStatus('Сохранено');
       } catch (e) {
         console.warn('save failed', e);
+        setStatus('Ошибка сохранения: ' + (e?.message || 'unknown'), true);
       } finally {
-        dirty = false;
         busy = false;
       }
     }
