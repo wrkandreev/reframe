@@ -139,7 +139,7 @@ $commenters = commentersAll();
 $latestComments = commentsLatest(80);
 $welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
 $adminMode = (string)($_GET['mode'] ?? 'media');
-if (!in_array($adminMode, ['media', 'comments'], true)) {
+if (!in_array($adminMode, ['media', 'comments', 'welcome'], true)) {
     $adminMode = 'media';
 }
 
@@ -273,6 +273,7 @@ function nextUniqueCodeName(string $base): string
         <h3>Меню</h3>
         <div class="sec">
           <a class="<?= $adminMode==='media'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=media<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Разделы и фото</a>
+          <a class="<?= $adminMode==='welcome'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">Приветственное сообщение</a>
           <a class="<?= $adminMode==='comments'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Комментаторы и комментарии</a>
         </div>
       </section>
@@ -310,16 +311,18 @@ function nextUniqueCodeName(string $base): string
     </aside>
 
     <main>
-      <?php if ($adminMode === 'media'): ?>
+      <?php if ($adminMode === 'welcome'): ?>
       <section class="card">
         <h3>Приветственное сообщение (публичная часть)</h3>
-        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">
+        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">
           <input type="hidden" name="action" value="update_welcome"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
-          <p><textarea class="in" name="welcome_text" rows="3" placeholder="Текст приветствия"><?= h($welcomeText) ?></textarea></p>
+          <p><textarea class="in" name="welcome_text" rows="5" placeholder="Текст приветствия"><?= h($welcomeText) ?></textarea></p>
           <button class="btn" type="submit">Сохранить приветствие</button>
         </form>
       </section>
+      <?php endif; ?>
 
+      <?php if ($adminMode === 'media'): ?>
       <section class="card">
         <h3>Загрузка фото “до” в выбранный раздел</h3>
         <?php if ($activeSectionId > 0): ?>
