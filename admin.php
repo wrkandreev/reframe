@@ -327,7 +327,7 @@ function nextUniqueCodeName(string $base): string
               <td><?php if (!empty($p['before_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
               <td><?php if (!empty($p['after_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
               <td>
-                <form class="js-photo-form" method="post" enctype="multipart/form-data" action="?section_id=<?= (int)$activeSectionId ?>&mode=media">
+                <form class="js-photo-form" method="post" enctype="multipart/form-data" action="admin.php?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=media">
                   <input type="hidden" name="action" value="photo_update"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <p><input class="in" name="code_name" value="<?= h((string)$p['code_name']) ?>"></p>
                   <p><input class="in" type="number" name="sort_order" value="<?= (int)$p['sort_order'] ?>"></p>
