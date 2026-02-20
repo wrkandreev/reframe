@@ -143,6 +143,13 @@ function outputWatermarked(string $path, string $mime): never
     .stack{display:grid;gap:12px;grid-template-columns:1fr}
     .cmt{border-top:1px solid #eee;padding:8px 0}
     .muted{color:#6b7280;font-size:13px}
+    .img-box{position:relative;display:block;background:#f3f4f6}
+    .img-box::before{content:'';position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border:3px solid #cbd5e1;border-top-color:#1f6feb;border-radius:50%;opacity:0;pointer-events:none}
+    .img-box.is-loading::before{opacity:1;animation:spin .75s linear infinite}
+    .img-box.is-loading img{opacity:.38}
+    .img-box img{transition:opacity .2s ease}
+    .thumb-img-box{height:130px}
+    @keyframes spin{to{transform:rotate(360deg)}}
     .sidebar-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .sidebar-head h3{margin:0}
     .sidebar-toggle{display:none}
@@ -200,8 +207,8 @@ function outputWatermarked(string $path, string $mime): never
           <h2><?= h((string)$photo['code_name']) ?></h2>
           <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
           <div class="stack">
-            <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt=""></div><?php endif; ?>
-            <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt=""></div><?php endif; ?>
+            <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><div class="img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt=""></div></div><?php endif; ?>
+            <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><div class="img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt=""></div></div><?php endif; ?>
           </div>
 
           <h3 style="margin-top:16px">Комментарии</h3>
@@ -232,7 +239,7 @@ function outputWatermarked(string $path, string $mime): never
             <div class="cards">
               <?php foreach($photos as $p): ?>
                 <a class="card" href="?photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$activeSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
-                  <?php if (!empty($p['before_file_id'])): ?><img src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt=""><?php endif; ?>
+                  <?php if (!empty($p['before_file_id'])): ?><div class="img-box thumb-img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt=""></div><?php endif; ?>
                   <?php if (!empty($p['after_file_id'])): ?><span title="Есть обработанная версия" style="position:absolute;top:8px;right:8px;background:rgba(31,111,235,.92);color:#fff;font-size:11px;line-height:1;padding:6px 7px;border-radius:999px">AI</span><?php endif; ?>
                   <div class="cap"><strong><?= h((string)$p['code_name']) ?></strong><br><span class="muted"><?= h((string)($p['description'] ?? '')) ?></span></div>
                 </a>
@@ -253,6 +260,24 @@ function outputWatermarked(string $path, string $mime): never
   document.querySelectorAll('img').forEach((img) => {
     img.addEventListener('contextmenu', (e) => e.preventDefault());
     img.addEventListener('dragstart', (e) => e.preventDefault());
+  });
+
+  document.querySelectorAll('.js-public-image').forEach((img) => {
+    const box = img.closest('.img-box');
+    if (!box) {
+      return;
+    }
+
+    const clearLoading = () => {
+      box.classList.remove('is-loading');
+    };
+
+    img.addEventListener('load', clearLoading, { once: true });
+    img.addEventListener('error', clearLoading, { once: true });
+
+    if (img.complete) {
+      clearLoading();
+    }
   });
 })();
 
