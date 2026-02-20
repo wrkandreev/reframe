@@ -34,13 +34,10 @@ foreach ($files as $file) {
         throw new RuntimeException("Cannot read {$file}");
     }
 
-    $pdo->beginTransaction();
     try {
         $pdo->exec($sql);
         $mark->execute(['name' => $name]);
-        $pdo->commit();
     } catch (Throwable $e) {
-        $pdo->rollBack();
         throw $e;
     }
 }
