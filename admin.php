@@ -24,7 +24,8 @@ $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? '');
-    $isAjax = (string)($_POST['ajax'] ?? '') === '1';
+    $isAjax = (string)($_POST['ajax'] ?? '') === '1'
+        || strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
 
     try {
         if ($action === 'create_section') {
@@ -326,7 +327,7 @@ function nextUniqueCodeName(string $base): string
               <td><?php if (!empty($p['before_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
               <td><?php if (!empty($p['after_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
               <td>
-                <form class="js-photo-form" method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=media">
+                <form class="js-photo-form" method="post" enctype="multipart/form-data" action="?section_id=<?= (int)$activeSectionId ?>&mode=media">
                   <input type="hidden" name="action" value="photo_update"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <p><input class="in" name="code_name" value="<?= h((string)$p['code_name']) ?>"></p>
                   <p><input class="in" type="number" name="sort_order" value="<?= (int)$p['sort_order'] ?>"></p>
@@ -445,8 +446,22 @@ function nextUniqueCodeName(string $base): string
       try {
         if (ajaxInput) ajaxInput.value = '1';
         const fd = new FormData(form);
-        const r = await fetch(form.action, { method: 'POST', body: fd });
-        const j = await r.json();
+        const r = await fetch(form.action, {
+          method: 'POST',
+          body: fd,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+          }
+        });
+
+        const raw = await r.text();
+        let j = null;
+        try {
+          j = JSON.parse(raw);
+        } catch {
+          throw new Error(raw.slice(0, 180) || 'Некорректный ответ сервера');
+        }
 
         if (!r.ok || !j.ok) {
           throw new Error(j?.message || 'Ошибка сохранения');
