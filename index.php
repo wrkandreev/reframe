@@ -40,6 +40,7 @@ $welcomeText = settingGet('welcome_text', 'Добро пожаловать в г
 $photo = $activePhotoId > 0 ? photoById($activePhotoId) : null;
 $comments = $photo ? commentsByPhoto($activePhotoId) : [];
 $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
+$isHomePage = $activeSectionId < 1 && $activePhotoId < 1;
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
@@ -128,14 +129,65 @@ function outputWatermarked(string $path, string $mime): never
   <title>Фотогалерея</title>
   <link rel="icon" type="image/svg+xml" href="<?= h(assetUrl('favicon.svg')) ?>">
   <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
-  <style>.note{color:#6b7280;font-size:13px}.page{display:grid;gap:16px;grid-template-columns:300px 1fr}.panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}.sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}.sec a.active{background:#eef4ff;color:#1f6feb}.cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}.card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}.card img{width:100%;height:130px;object-fit:cover}.cap{padding:8px;font-size:13px}.detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}.stack{display:grid;gap:12px;grid-template-columns:1fr}.cmt{border-top:1px solid #eee;padding:8px 0}.muted{color:#6b7280;font-size:13px}</style>
+  <style>
+    .note{color:#6b7280;font-size:13px}
+    .page{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr)}
+    .panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}
+    .sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}
+    .sec a.active{background:#eef4ff;color:#1f6feb}
+    .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+    .card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
+    .card img{width:100%;height:130px;object-fit:cover}
+    .cap{padding:8px;font-size:13px}
+    .detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}
+    .stack{display:grid;gap:12px;grid-template-columns:1fr}
+    .cmt{border-top:1px solid #eee;padding:8px 0}
+    .muted{color:#6b7280;font-size:13px}
+    .sidebar-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .sidebar-head h3{margin:0}
+    .sidebar-toggle{display:none}
+    .sidebar-toggle,.sidebar-close{border:1px solid #d1d5db;background:#fff;color:#1f2937;border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;cursor:pointer}
+    .sidebar-close{display:none;width:34px;height:34px;padding:0;line-height:1;font-size:24px}
+    .sidebar-backdrop{display:none}
+
+    @media (max-width:900px){
+      .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+      .topbar h1{margin:0;font-size:24px}
+      .page{grid-template-columns:1fr}
+
+      .is-inner .sidebar-toggle{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+      .is-inner .sidebar{position:fixed;top:0;left:0;z-index:40;width:min(86vw,320px);height:100dvh;overflow-y:auto;border-radius:0 12px 12px 0;transform:translateX(-105%);transition:transform .2s ease;padding-top:18px}
+      .is-inner.sidebar-open .sidebar{transform:translateX(0)}
+      .is-inner .sidebar-close{display:inline-flex;align-items:center;justify-content:center}
+      .is-inner .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:30;border:0;padding:0;background:rgba(17,24,39,.45);opacity:0;pointer-events:none;transition:opacity .2s ease}
+      .is-inner.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
+    }
+
+    @media (max-width:560px){
+      .app{padding:14px}
+      .topbar h1{font-size:22px}
+    }
+  </style>
 </head>
-<body>
+<body class="<?= $isHomePage ? 'is-home' : 'is-inner' ?>">
 <div class="app">
-  <header class="topbar"><h1>Фотогалерея</h1></header>
+  <header class="topbar">
+    <h1>Фотогалерея</h1>
+    <?php if (!$isHomePage): ?>
+      <button class="sidebar-toggle js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Разделы</button>
+    <?php endif; ?>
+  </header>
+  <?php if (!$isHomePage): ?>
+    <button class="sidebar-backdrop js-sidebar-close" type="button" aria-label="Закрыть меню разделов"></button>
+  <?php endif; ?>
   <div class="page">
-    <aside class="panel sec">
-      <h3>Разделы</h3>
+    <aside id="sidebar" class="panel sec sidebar">
+      <div class="sidebar-head">
+        <h3>Разделы</h3>
+        <?php if (!$isHomePage): ?>
+          <button class="sidebar-close js-sidebar-close" type="button" aria-label="Закрыть меню разделов">×</button>
+        <?php endif; ?>
+      </div>
       <?php foreach($sections as $s): ?>
         <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
       <?php endforeach; ?>
@@ -202,6 +254,123 @@ function outputWatermarked(string $path, string $mime): never
     img.addEventListener('contextmenu', (e) => e.preventDefault());
     img.addEventListener('dragstart', (e) => e.preventDefault());
   });
+})();
+
+(() => {
+  const body = document.body;
+  if (!body.classList.contains('is-inner')) {
+    return;
+  }
+
+  const toggle = document.querySelector('.js-sidebar-toggle');
+  const sidebar = document.getElementById('sidebar');
+  const closers = document.querySelectorAll('.js-sidebar-close');
+  if (!toggle || !sidebar || closers.length === 0) {
+    return;
+  }
+
+  const closeSidebar = () => {
+    body.classList.remove('sidebar-open');
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+
+  const openSidebar = () => {
+    body.classList.add('sidebar-open');
+    toggle.setAttribute('aria-expanded', 'true');
+  };
+
+  toggle.addEventListener('click', () => {
+    if (body.classList.contains('sidebar-open')) {
+      closeSidebar();
+      return;
+    }
+
+    openSidebar();
+  });
+
+  closers.forEach((btn) => {
+    btn.addEventListener('click', closeSidebar);
+  });
+
+  sidebar.querySelectorAll('a').forEach((link) => {
+    link.addEventListener('click', closeSidebar);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeSidebar();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900) {
+      closeSidebar();
+    }
+  });
+
+  const isPhoneViewport = () => window.matchMedia('(max-width: 768px)').matches;
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+  let trackSwipe = false;
+  let startFromEdge = false;
+  let startInsideSidebar = false;
+
+  document.addEventListener('touchstart', (e) => {
+    if (!isPhoneViewport() || e.touches.length !== 1) {
+      trackSwipe = false;
+      return;
+    }
+
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchStartTime = Date.now();
+    startFromEdge = touchStartX <= 28;
+    startInsideSidebar = body.classList.contains('sidebar-open') && sidebar.contains(e.target);
+    trackSwipe = startFromEdge || startInsideSidebar;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!trackSwipe || !isPhoneViewport() || e.touches.length !== 1) {
+      return;
+    }
+
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = Math.abs(touch.clientY - touchStartY);
+    if (deltaY > 42 && Math.abs(deltaX) < deltaY) {
+      trackSwipe = false;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (!trackSwipe || !isPhoneViewport()) {
+      return;
+    }
+
+    trackSwipe = false;
+    const touch = e.changedTouches[0];
+    if (!touch) {
+      return;
+    }
+
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = Math.abs(touch.clientY - touchStartY);
+    const elapsed = Date.now() - touchStartTime;
+    if (deltaY > 70 || elapsed > 700) {
+      return;
+    }
+
+    if (!body.classList.contains('sidebar-open') && startFromEdge && deltaX > 70) {
+      openSidebar();
+      return;
+    }
+
+    if (body.classList.contains('sidebar-open') && startInsideSidebar && deltaX < -70) {
+      closeSidebar();
+    }
+  }, { passive: true });
 })();
 </script>
 </body>
