@@ -25,6 +25,18 @@ function sectionCreate(string $name, int $sort): void
     $st->execute(['name' => $name, 'sort' => $sort]);
 }
 
+function sectionUpdate(int $id, string $name, int $sort): void
+{
+    $st = db()->prepare('UPDATE sections SET name=:name, sort_order=:sort WHERE id=:id');
+    $st->execute(['id' => $id, 'name' => $name, 'sort' => $sort]);
+}
+
+function sectionDelete(int $id): void
+{
+    $st = db()->prepare('DELETE FROM sections WHERE id=:id');
+    $st->execute(['id' => $id]);
+}
+
 function photosBySection(int $sectionId): array
 {
     $sql = 'SELECT p.*, 

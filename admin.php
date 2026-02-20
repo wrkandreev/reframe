@@ -36,6 +36,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Раздел создан';
         }
 
+        if ($action === 'update_section') {
+            $sectionId = (int)($_POST['section_id'] ?? 0);
+            $name = trim((string)($_POST['name'] ?? ''));
+            $sort = (int)($_POST['sort_order'] ?? 1000);
+            if ($sectionId < 1) throw new RuntimeException('Некорректный раздел');
+            if ($name === '') throw new RuntimeException('Название раздела пустое');
+            if (!sectionById($sectionId)) throw new RuntimeException('Раздел не найден');
+            sectionUpdate($sectionId, $name, $sort);
+            $message = 'Раздел обновлён';
+        }
+
+        if ($action === 'delete_section') {
+            $sectionId = (int)($_POST['section_id'] ?? 0);
+            if ($sectionId < 1) throw new RuntimeException('Некорректный раздел');
+            if (!sectionById($sectionId)) throw new RuntimeException('Раздел не найден');
+
+            sectionDelete($sectionId);
+            deleteSectionStorage($sectionId);
+            $message = 'Раздел удалён';
+        }
+
         if ($action === 'update_welcome') {
             $text = trim((string)($_POST['welcome_text'] ?? ''));
             settingSet('welcome_text', $text);
@@ -143,6 +164,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $sections = sectionsAll();
 $activeSectionId = (int)($_GET['section_id'] ?? ($_POST['section_id'] ?? ($sections[0]['id'] ?? 0)));
+$activeSection = $activeSectionId > 0 ? sectionById($activeSectionId) : null;
+if (!$activeSection && $sections !== []) {
+    $activeSectionId = (int)$sections[0]['id'];
+    $activeSection = sectionById($activeSectionId);
+}
 $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 $commenters = commentersAll();
 $latestComments = commentsLatest(80);
@@ -240,6 +266,40 @@ function uniqueName(string $dir, string $base, string $ext): string
     return $name;
 }
 
+function deleteSectionStorage(int $sectionId): void
+{
+    $dir = __DIR__ . '/photos/section_' . $sectionId;
+    if (!is_dir($dir)) {
+        return;
+    }
+
+    deleteDirRecursive($dir);
+}
+
+function deleteDirRecursive(string $dir): void
+{
+    $items = scandir($dir);
+    if (!is_array($items)) {
+        return;
+    }
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $path = $dir . '/' . $item;
+        if (is_dir($path)) {
+            deleteDirRecursive($path);
+            continue;
+        }
+
+        @unlink($path);
+    }
+
+    @rmdir($dir);
+}
+
 function nextSortOrderForSection(int $sectionId): int
 {
     $st = db()->prepare('SELECT COALESCE(MAX(sort_order),0)+10 FROM photos WHERE section_id=:sid');
@@ -295,6 +355,22 @@ function nextUniqueCodeName(string $base): string
             <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$s['id'] ?>"><?= h((string)$s['name']) ?> <span class="small">(<?= (int)$s['photos_count'] ?>)</span></a>
           <?php endforeach; ?>
         </div>
+
+        <?php if ($activeSection): ?>
+          <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
+          <h4 style="margin:0 0 8px">Редактировать выбранный</h4>
+          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media&section_id=<?= (int)$activeSectionId ?>">
+            <input type="hidden" name="action" value="update_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
+            <p><input class="in" name="name" value="<?= h((string)$activeSection['name']) ?>" required></p>
+            <p><input class="in" type="number" name="sort_order" value="<?= (int)$activeSection['sort_order'] ?>"></p>
+            <button class="btn" type="submit">Переименовать</button>
+          </form>
+          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media" onsubmit="return confirm('Удалить раздел и все его фото?')" style="margin-top:8px">
+            <input type="hidden" name="action" value="delete_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
+            <button class="btn btn-danger" type="submit">Удалить раздел</button>
+          </form>
+        <?php endif; ?>
+
         <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
         <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media">
           <input type="hidden" name="action" value="create_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
