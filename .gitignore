@@ -4,6 +4,7 @@ thumbs/*
 photos/*
 !photos/.gitkeep
 data/last_indexed.txt
+data/sort.json
 
 # OS/editor
 .DS_Store
