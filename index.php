@@ -196,5 +196,13 @@ function outputWatermarked(string $path, string $mime): never
     <small class="footer-author">by <a href="https://t.me/andr33vru" target="_blank" rel="noopener noreferrer">andr33vru</a></small>
   </footer>
 </div>
+<script>
+(() => {
+  document.querySelectorAll('img').forEach((img) => {
+    img.addEventListener('contextmenu', (e) => e.preventDefault());
+    img.addEventListener('dragstart', (e) => e.preventDefault());
+  });
+})();
+</script>
 </body>
 </html>
