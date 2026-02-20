@@ -55,6 +55,27 @@ photo-gallery/
 php -S 127.0.0.1:8080
 ```
 
+## MySQL конфиг и миграции (этап перехода на БД)
+
+1. Создай локальный конфиг из шаблона:
+
+```bash
+cp config.php.example config.php
+```
+
+2. Заполни доступы к MySQL в `config.php`.
+
+3. Прогони миграции:
+
+```bash
+php scripts/migrate.php
+```
+
+Файлы:
+- `lib/db.php` — подключение PDO
+- `migrations/*.sql` — схема БД
+- `scripts/migrate.php` — runner миграций
+
 Открыть в браузере:
 
 - `http://127.0.0.1:8080`

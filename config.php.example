@@ -1,0 +1,11 @@
+<?php
+return [
+    'db' => [
+        'host' => '127.0.0.1',
+        'port' => 3306,
+        'name' => 'photo_gallery',
+        'user' => 'gallery_user',
+        'pass' => 'change_me',
+        'charset' => 'utf8mb4',
+    ],
+];

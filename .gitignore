@@ -15,6 +15,7 @@ Thumbs.db
 
 # Local secrets
 deploy-config.php
+config.php
 
 # Logs/temp
 *.log
