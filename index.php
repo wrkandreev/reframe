@@ -2,376 +2,192 @@
 
 declare(strict_types=1);
 
-const THUMB_WIDTH = 360;
-const THUMB_HEIGHT = 240;
+require_once __DIR__ . '/lib/db_gallery.php';
 
-$baseDir = __DIR__;
-$photosDir = $baseDir . '/photos';
-$thumbsDir = $baseDir . '/thumbs';
-$dataDir = $baseDir . '/data';
-$lastIndexedFile = $dataDir . '/last_indexed.txt';
-$sortFile = $dataDir . '/sort.json';
-
-ensureDirectories([$photosDir, $thumbsDir, $dataDir]);
-$sortData = loadSortData($sortFile);
-
-$action = $_GET['action'] ?? null;
+$action = (string)($_GET['action'] ?? '');
 if ($action === 'image') {
-    serveImage($photosDir);
+    serveImage();
 }
 
-$lastIndexedTimestamp = readLastIndexedTimestamp($lastIndexedFile);
-$maxTimestamp = $lastIndexedTimestamp;
+$viewerToken = trim((string)($_GET['viewer'] ?? ''));
+$viewer = $viewerToken !== '' ? commenterByToken($viewerToken) : null;
 
-$categories = scanCategories($photosDir, $sortData);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'add_comment') {
+    $token = trim((string)($_POST['viewer'] ?? ''));
+    $photoId = (int)($_POST['photo_id'] ?? 0);
+    $text = trim((string)($_POST['comment_text'] ?? ''));
 
-foreach ($categories as $categoryName => &$images) {
-    $categoryThumbDir = $thumbsDir . '/' . $categoryName;
-    if (!is_dir($categoryThumbDir)) {
-        mkdir($categoryThumbDir, 0775, true);
-    }
-
-    foreach ($images as &$image) {
-        $sourcePath = $image['abs_path'];
-        $sourceMtime = (int) filemtime($sourcePath);
-        $maxTimestamp = max($maxTimestamp, $sourceMtime);
-
-        $thumbExt = 'jpg';
-        $thumbName = pathinfo($image['filename'], PATHINFO_FILENAME) . '.jpg';
-        $thumbAbsPath = $categoryThumbDir . '/' . $thumbName;
-        $thumbWebPath = 'thumbs/' . rawurlencode($categoryName) . '/' . rawurlencode($thumbName);
-
-        $needsThumb = !file_exists($thumbAbsPath)
-            || filemtime($thumbAbsPath) < $sourceMtime
-            || $sourceMtime > $lastIndexedTimestamp;
-
-        if ($needsThumb) {
-            createThumbnail($sourcePath, $thumbAbsPath, THUMB_WIDTH, THUMB_HEIGHT);
+    if ($token !== '' && $photoId > 0 && $text !== '') {
+        $u = commenterByToken($token);
+        if ($u) {
+            commentAdd($photoId, (int)$u['id'], mb_substr($text, 0, 1000));
         }
-
-        $image['thumb_path'] = $thumbWebPath;
-        $image['full_path'] = '?action=image&category=' . rawurlencode($categoryName) . '&file=' . rawurlencode($image['filename']);
-        $image['title'] = titleFromFilename($image['filename']);
-        $image['mtime'] = $sourceMtime;
     }
 
-    usort($images, static function (array $a, array $b): int {
-        $bySort = ($a['sort_index'] ?? 0) <=> ($b['sort_index'] ?? 0);
-        if ($bySort !== 0) {
-            return $bySort;
-        }
-
-        return ($b['mtime'] ?? 0) <=> ($a['mtime'] ?? 0);
-    });
-}
-unset($images, $image);
-
-if ($maxTimestamp > $lastIndexedTimestamp) {
-    file_put_contents($lastIndexedFile, (string)$maxTimestamp);
-}
-
-$selectedCategory = isset($_GET['category']) ? trim((string)$_GET['category']) : null;
-if ($selectedCategory !== null && $selectedCategory !== '' && !isset($categories[$selectedCategory])) {
-    http_response_code(404);
-    $selectedCategory = null;
-}
-
-?><!doctype html>
-<html lang="ru">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Фотогалерея</title>
-    <link rel="icon" type="image/svg+xml" href="<?= htmlspecialchars(assetUrl('favicon.svg'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-    <link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('style.css'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-</head>
-<body>
-<div class="app">
-    <header class="topbar">
-        <h1>Фотогалерея</h1>
-        <p class="subtitle">Простая галерея, которая управляется через файловый менеджер.</p>
-    </header>
-
-    <?php if ($selectedCategory === null): ?>
-        <section class="panel">
-            <h2>Категории</h2>
-            <?php if (count($categories) === 0): ?>
-                <p class="empty">Пока нет папок с фото. Загрузите файлы в <code>photos/&lt;категория&gt;/</code> через FTP.</p>
-            <?php else: ?>
-                <div class="categories-grid">
-                    <?php foreach ($categories as $categoryName => $images): ?>
-                        <?php $cover = $images[0]['thumb_path'] ?? null; ?>
-                        <a class="category-card" href="?category=<?= urlencode($categoryName) ?>">
-                            <?php if ($cover): ?>
-                                <img
-                                    class="category-cover"
-                                    src="<?= htmlspecialchars($cover, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
-                                    alt="<?= htmlspecialchars($categoryName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
-                                    loading="lazy"
-                                >
-                            <?php endif; ?>
-                            <span class="category-title"><?= htmlspecialchars($categoryName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span>
-                            <span class="category-count"><?= count($images) ?> фото</span>
-                        </a>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-        </section>
-    <?php else: ?>
-        <section class="panel">
-            <div class="panel-header">
-                <h2><?= htmlspecialchars($selectedCategory, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h2>
-                <a class="btn" href="./">← Все категории</a>
-            </div>
-
-            <?php $images = $categories[$selectedCategory] ?? []; ?>
-            <?php if (count($images) === 0): ?>
-                <p class="empty">В этой категории пока нет изображений.</p>
-            <?php else: ?>
-                <div class="gallery-grid">
-                    <?php foreach ($images as $img): ?>
-                        <button
-                            class="thumb-card js-thumb"
-                            data-full="<?= htmlspecialchars($img['full_path'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
-                            data-title="<?= htmlspecialchars($img['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
-                            type="button"
-                        >
-                            <img
-                                src="<?= htmlspecialchars($img['thumb_path'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
-                                alt="<?= htmlspecialchars($img['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
-                                loading="lazy"
-                            >
-                            <span class="thumb-title"><?= htmlspecialchars($img['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span>
-                        </button>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-        </section>
-    <?php endif; ?>
-
-    <footer class="footer">
-        <small>Последняя индексация: <?= file_exists($lastIndexedFile) ? date('Y-m-d H:i:s', (int)trim((string)file_get_contents($lastIndexedFile))) : '—' ?></small>
-        <small class="footer-author">by <a href="https://t.me/andr33vru" target="_blank" rel="noopener noreferrer">andr33vru</a></small>
-    </footer>
-</div>
-
-<div class="lightbox" id="lightbox" hidden>
-    <div class="lightbox-backdrop js-close"></div>
-    <div class="lightbox-content">
-        <button class="lightbox-close js-close" type="button" aria-label="Закрыть">×</button>
-        <img id="lightboxImage" src="" alt="">
-        <div id="lightboxTitle" class="lightbox-title"></div>
-    </div>
-</div>
-
-<script src="<?= htmlspecialchars(assetUrl('app.js'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" defer></script>
-</body>
-</html>
-<?php
-
-function serveImage(string $photosDir): never
-{
-    $category = isset($_GET['category']) ? basename((string)$_GET['category']) : '';
-    $file = isset($_GET['file']) ? basename((string)$_GET['file']) : '';
-
-    if ($category === '' || $file === '') {
-        http_response_code(404);
-        exit;
+    $redirect = './?photo_id=' . $photoId;
+    if ($token !== '') {
+        $redirect .= '&viewer=' . urlencode($token);
     }
-
-    $path = $photosDir . '/' . $category . '/' . $file;
-    if (!is_file($path) || !isImage($path)) {
-        http_response_code(404);
-        exit;
-    }
-
-    $mime = mime_content_type($path) ?: 'application/octet-stream';
-    header('Content-Type: ' . $mime);
-    header('Content-Length: ' . (string)filesize($path));
-    header('X-Robots-Tag: noindex, nofollow');
-    header('Content-Disposition: inline; filename="image"');
-    header('Cache-Control: private, max-age=60');
-
-    readfile($path);
+    header('Location: ' . $redirect);
     exit;
 }
 
-function titleFromFilename(string $filename): string
+$sections = sectionsAll();
+$activeSectionId = (int)($_GET['section_id'] ?? 0);
+$activePhotoId = (int)($_GET['photo_id'] ?? 0);
+
+$photo = $activePhotoId > 0 ? photoById($activePhotoId) : null;
+$comments = $photo ? commentsByPhoto($activePhotoId) : [];
+$photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
+
+function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
+
+function serveImage(): never
 {
-    $name = pathinfo($filename, PATHINFO_FILENAME);
-    $name = str_replace(['_', '-'], ' ', $name);
-    $name = preg_replace('/\s+/', ' ', $name) ?? $name;
-    $name = trim($name);
-
-    if ($name === '') {
-        return $filename;
+    $fileId = (int)($_GET['file_id'] ?? 0);
+    if ($fileId < 1) {
+        http_response_code(404);
+        exit;
     }
 
-    if (function_exists('mb_convert_case')) {
-        return mb_convert_case($name, MB_CASE_TITLE, 'UTF-8');
+    $f = photoFileById($fileId);
+    if (!$f) {
+        http_response_code(404);
+        exit;
     }
 
-    return ucwords(strtolower($name));
+    $abs = __DIR__ . '/' . ltrim((string)$f['file_path'], '/');
+    if (!is_file($abs)) {
+        http_response_code(404);
+        exit;
+    }
+
+    if ((string)$f['kind'] !== 'after') {
+        header('Content-Type: ' . ((string)$f['mime_type'] ?: 'application/octet-stream'));
+        header('Content-Length: ' . (string)filesize($abs));
+        header('Cache-Control: private, max-age=60');
+        header('X-Robots-Tag: noindex, nofollow');
+        readfile($abs);
+        exit;
+    }
+
+    outputWatermarked($abs, (string)$f['mime_type']);
 }
 
-function ensureDirectories(array $dirs): void
+function outputWatermarked(string $path, string $mime): never
 {
-    foreach ($dirs as $dir) {
-        if (!is_dir($dir)) {
-            mkdir($dir, 0775, true);
-        }
-    }
-}
+    $text = 'photo.andr33v.ru';
 
-function readLastIndexedTimestamp(string $path): int
-{
-    if (!file_exists($path)) {
-        return 0;
-    }
-
-    $value = trim((string) file_get_contents($path));
-    return ctype_digit($value) ? (int)$value : 0;
-}
-
-function scanCategories(string $photosDir, array $sortData): array
-{
-    $result = [];
-    $categorySortMap = (array)($sortData['categories'] ?? []);
-    $photoSortMap = (array)($sortData['photos'] ?? []);
-
-    $entries = @scandir($photosDir) ?: [];
-    foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
-            continue;
-        }
-
-        $categoryPath = $photosDir . '/' . $entry;
-        if (!is_dir($categoryPath)) {
-            continue;
-        }
-
-        $images = [];
-        $files = @scandir($categoryPath) ?: [];
-        foreach ($files as $filename) {
-            if ($filename === '.' || $filename === '..') {
-                continue;
-            }
-
-            $absPath = $categoryPath . '/' . $filename;
-            if (!is_file($absPath) || !isImage($absPath)) {
-                continue;
-            }
-
-            $images[] = [
-                'filename' => $filename,
-                'abs_path' => $absPath,
-                'sort_index' => (int)(($photoSortMap[$entry][$filename] ?? 1000)),
-            ];
-        }
-
-        $result[$entry] = $images;
-    }
-
-    uksort($result, static function (string $a, string $b) use ($categorySortMap): int {
-        $aSort = (int)($categorySortMap[$a] ?? 1000);
-        $bSort = (int)($categorySortMap[$b] ?? 1000);
-
-        if ($aSort !== $bSort) {
-            return $aSort <=> $bSort;
-        }
-
-        return strnatcasecmp($a, $b);
-    });
-
-    return $result;
-}
-
-function assetUrl(string $relativePath): string
-{
-    $file = __DIR__ . '/' . ltrim($relativePath, '/');
-    $v = is_file($file) ? (string)filemtime($file) : (string)time();
-    return $relativePath . '?v=' . rawurlencode($v);
-}
-
-function loadSortData(string $sortFile): array
-{
-    if (!is_file($sortFile)) {
-        return ['categories' => [], 'photos' => []];
-    }
-
-    $json = file_get_contents($sortFile);
-    if ($json === false || trim($json) === '') {
-        return ['categories' => [], 'photos' => []];
-    }
-
-    $data = json_decode($json, true);
-    if (!is_array($data)) {
-        return ['categories' => [], 'photos' => []];
-    }
-
-    return [
-        'categories' => is_array($data['categories'] ?? null) ? $data['categories'] : [],
-        'photos' => is_array($data['photos'] ?? null) ? $data['photos'] : [],
-    ];
-}
-
-function isImage(string $path): bool
-{
-    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-    return in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
-}
-
-function createThumbnail(string $srcPath, string $thumbPath, int $targetWidth, int $targetHeight): void
-{
     if (extension_loaded('imagick')) {
-        createThumbnailWithImagick($srcPath, $thumbPath, $targetWidth, $targetHeight);
-        return;
+        $im = new Imagick($path);
+        $draw = new ImagickDraw();
+        $draw->setFillColor(new ImagickPixel('rgba(255,255,255,0.22)'));
+        $draw->setFontSize(max(18, (int)($im->getImageWidth() / 24)));
+        $draw->setGravity(Imagick::GRAVITY_SOUTHEAST);
+        $im->annotateImage($draw, 20, 24, -15, $text);
+        header('Content-Type: ' . ($mime !== '' ? $mime : 'image/jpeg'));
+        $im->setImageCompressionQuality(88);
+        echo $im;
+        $im->clear();
+        $im->destroy();
+        exit;
     }
 
-    createThumbnailWithGd($srcPath, $thumbPath, $targetWidth, $targetHeight);
-}
-
-function createThumbnailWithImagick(string $srcPath, string $thumbPath, int $targetWidth, int $targetHeight): void
-{
-    $imagick = new Imagick($srcPath);
-    $imagick->setIteratorIndex(0);
-    $imagick->setImageOrientation(Imagick::ORIENTATION_UNDEFINED);
-    $imagick->thumbnailImage($targetWidth, $targetHeight, true, true);
-    $imagick->setImageFormat('jpeg');
-    $imagick->setImageCompressionQuality(82);
-    $imagick->writeImage($thumbPath);
-    $imagick->clear();
-    $imagick->destroy();
-}
-
-function createThumbnailWithGd(string $srcPath, string $thumbPath, int $targetWidth, int $targetHeight): void
-{
-    [$srcW, $srcH, $type] = @getimagesize($srcPath) ?: [0, 0, 0];
-    if ($srcW < 1 || $srcH < 1) {
-        return;
-    }
-
-    $src = match ($type) {
-        IMAGETYPE_JPEG => @imagecreatefromjpeg($srcPath),
-        IMAGETYPE_PNG => @imagecreatefrompng($srcPath),
-        IMAGETYPE_GIF => @imagecreatefromgif($srcPath),
-        IMAGETYPE_WEBP => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($srcPath) : null,
+    [$w, $h, $type] = @getimagesize($path) ?: [0,0,0];
+    $img = match ($type) {
+        IMAGETYPE_JPEG => @imagecreatefromjpeg($path),
+        IMAGETYPE_PNG => @imagecreatefrompng($path),
+        IMAGETYPE_GIF => @imagecreatefromgif($path),
+        IMAGETYPE_WEBP => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($path) : null,
         default => null,
     };
-
-    if (!$src) {
-        return;
+    if (!$img) {
+        readfile($path);
+        exit;
     }
 
-    $scale = min($targetWidth / $srcW, $targetHeight / $srcH);
-    $dstW = max(1, (int) floor($srcW * $scale));
-    $dstH = max(1, (int) floor($srcH * $scale));
+    $font = 5;
+    $color = imagecolorallocatealpha($img, 255, 255, 255, 90);
+    $x = max(5, $w - (imagefontwidth($font) * strlen($text)) - 15);
+    $y = max(5, $h - imagefontheight($font) - 12);
+    imagestring($img, $font, $x, $y, $text, $color);
 
-    $dst = imagecreatetruecolor($dstW, $dstH);
-    imagecopyresampled($dst, $src, 0, 0, 0, 0, $dstW, $dstH, $srcW, $srcH);
-
-    imagejpeg($dst, $thumbPath, 82);
-
-    imagedestroy($src);
-    imagedestroy($dst);
+    header('Content-Type: image/jpeg');
+    imagejpeg($img, null, 88);
+    imagedestroy($img);
+    exit;
 }
+?>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Фотогалерея</title>
+  <link rel="icon" type="image/svg+xml" href="<?= h(assetUrl('favicon.svg')) ?>">
+  <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
+  <style>.note{color:#6b7280;font-size:13px}.page{display:grid;gap:16px;grid-template-columns:300px 1fr}.panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}.sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}.sec a.active{background:#eef4ff;color:#1f6feb}.cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}.card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}.card img{width:100%;height:130px;object-fit:cover}.cap{padding:8px;font-size:13px}.detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}.two{display:grid;gap:10px;grid-template-columns:1fr 1fr}.cmt{border-top:1px solid #eee;padding:8px 0}.muted{color:#6b7280;font-size:13px}</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar"><h1>Фотогалерея</h1><p class="subtitle">Простая галерея, которая управляется через файловый менеджер.</p></header>
+  <div class="page">
+    <aside class="panel sec">
+      <h3>Разделы</h3>
+      <?php foreach($sections as $s): ?>
+        <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
+      <?php endforeach; ?>
+      <p class="note" style="margin-top:12px"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
+    </aside>
+    <main>
+      <?php if ($activePhotoId > 0 && $photo): ?>
+        <section class="panel detail">
+          <p><a href="?section_id=<?= (int)$photo['section_id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← к разделу</a></p>
+          <h2><?= h((string)$photo['code_name']) ?></h2>
+          <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
+          <div class="two">
+            <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt=""></div><?php endif; ?>
+            <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt=""></div><?php endif; ?>
+          </div>
+
+          <h3 style="margin-top:16px">Комментарии</h3>
+          <?php if ($viewer): ?>
+            <form method="post" action="?photo_id=<?= (int)$photo['id'] ?>&viewer=<?= urlencode($viewerToken) ?>">
+              <input type="hidden" name="action" value="add_comment">
+              <input type="hidden" name="photo_id" value="<?= (int)$photo['id'] ?>">
+              <input type="hidden" name="viewer" value="<?= h($viewerToken) ?>">
+              <textarea name="comment_text" required style="width:100%;min-height:80px;border:1px solid #d1d5db;border-radius:8px;padding:8px"></textarea>
+              <p><button class="btn" type="submit">Отправить</button></p>
+            </form>
+          <?php else: ?>
+            <p class="muted">Комментарии может оставлять только пользователь с персональной ссылкой.</p>
+          <?php endif; ?>
+
+          <?php foreach($comments as $c): ?>
+            <div class="cmt"><strong><?= h((string)($c['display_name'] ?? 'Пользователь')) ?></strong> <span class="muted">· <?= h((string)$c['created_at']) ?></span><br><?= nl2br(h((string)$c['comment_text'])) ?></div>
+          <?php endforeach; ?>
+        </section>
+      <?php else: ?>
+        <section class="panel">
+          <h3>Фотографии</h3>
+          <?php if ($activeSectionId < 1): ?>
+            <p class="muted">Выберите раздел слева.</p>
+          <?php elseif ($photos === []): ?>
+            <p class="muted">В разделе пока нет фотографий.</p>
+          <?php else: ?>
+            <div class="cards">
+              <?php foreach($photos as $p): ?>
+                <a class="card" href="?photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$activeSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit">
+                  <?php if (!empty($p['before_file_id'])): ?><img src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt=""><?php endif; ?>
+                  <div class="cap"><strong><?= h((string)$p['code_name']) ?></strong><br><span class="muted"><?= h((string)($p['description'] ?? '')) ?></span></div>
+                </a>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
+        </section>
+      <?php endif; ?>
+    </main>
+  </div>
+</div>
+</body>
+</html>
