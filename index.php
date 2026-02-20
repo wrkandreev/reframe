@@ -178,8 +178,9 @@ function outputWatermarked(string $path, string $mime): never
           <?php else: ?>
             <div class="cards">
               <?php foreach($photos as $p): ?>
-                <a class="card" href="?photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$activeSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit">
+                <a class="card" href="?photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$activeSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
                   <?php if (!empty($p['before_file_id'])): ?><img src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt=""><?php endif; ?>
+                  <?php if (!empty($p['after_file_id'])): ?><span title="Есть обработанная версия" style="position:absolute;top:8px;right:8px;background:rgba(31,111,235,.92);color:#fff;font-size:11px;line-height:1;padding:6px 7px;border-radius:999px">AI</span><?php endif; ?>
                   <div class="cap"><strong><?= h((string)$p['code_name']) ?></strong><br><span class="muted"><?= h((string)($p['description'] ?? '')) ?></span></div>
                 </a>
               <?php endforeach; ?>

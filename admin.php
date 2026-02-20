@@ -114,6 +114,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        if ($action === 'regenerate_commenter_token') {
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id > 0) {
+                $token = commenterRegenerateToken($id);
+                $link = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/?viewer=' . urlencode($token);
+                $message = 'Токен обновлён | ссылка: ' . $link;
+            }
+        }
+
         if ($action === 'delete_comment') {
             $id = (int)($_POST['id'] ?? 0);
             if ($id > 0) {
@@ -371,9 +380,20 @@ function nextUniqueCodeName(string $base): string
       <?php if ($adminMode === 'comments'): ?>
       <section class="card">
         <h3>Комментаторы и комментарии</h3>
-        <table class="tbl"><tr><th>Пользователь</th><th>Действие</th></tr>
+        <table class="tbl"><tr><th>Пользователь</th><th>Ссылка</th><th>Действия</th></tr>
           <?php foreach($commenters as $u): ?>
+            <?php $viewerLink = !empty($u['token_plain']) ? ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/?viewer=' . urlencode((string)$u['token_plain'])) : ''; ?>
             <tr><td><?= h((string)$u['display_name']) ?></td><td>
+              <?php if ($viewerLink !== ''): ?>
+                <input class="in" type="text" readonly value="<?= h($viewerLink) ?>" onclick="this.select()" style="min-width:320px">
+              <?php else: ?>
+                <span class="small">Нет сохранённой ссылки (старый пользователь)</span>
+              <?php endif; ?>
+            </td><td style="display:flex;gap:8px;flex-wrap:wrap">
+              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">
+                <input type="hidden" name="action" value="regenerate_commenter_token"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                <button class="btn" type="submit">Новая ссылка</button>
+              </form>
               <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить пользователя?')">
                 <input type="hidden" name="action" value="delete_commenter"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                 <button class="btn btn-danger" type="submit">Удалить доступ</button>

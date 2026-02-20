@@ -100,8 +100,8 @@ function commenterCreate(string $displayName): array
 {
     $token = bin2hex(random_bytes(16));
     $hash = hash('sha256', $token);
-    $st = db()->prepare('INSERT INTO comment_users(display_name, token_hash, is_active) VALUES (:n,:h,1)');
-    $st->execute(['n' => $displayName, 'h' => $hash]);
+    $st = db()->prepare('INSERT INTO comment_users(display_name, token_hash, token_plain, is_active) VALUES (:n,:h,:p,1)');
+    $st->execute(['n' => $displayName, 'h' => $hash, 'p' => $token]);
 
     return [
         'id' => (int)db()->lastInsertId(),
@@ -119,6 +119,15 @@ function commenterDelete(int $id): void
 {
     $st = db()->prepare('DELETE FROM comment_users WHERE id=:id');
     $st->execute(['id' => $id]);
+}
+
+function commenterRegenerateToken(int $id): string
+{
+    $token = bin2hex(random_bytes(16));
+    $hash = hash('sha256', $token);
+    $st = db()->prepare('UPDATE comment_users SET token_hash=:h, token_plain=:p WHERE id=:id');
+    $st->execute(['h' => $hash, 'p' => $token, 'id' => $id]);
+    return $token;
 }
 
 function commentsByPhoto(int $photoId): array
