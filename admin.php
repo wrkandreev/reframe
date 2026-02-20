@@ -36,6 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Раздел создан';
         }
 
+        if ($action === 'update_welcome') {
+            $text = trim((string)($_POST['welcome_text'] ?? ''));
+            settingSet('welcome_text', $text);
+            $message = 'Приветственное сообщение сохранено';
+        }
+
         if ($action === 'upload_before_bulk') {
             $sectionId = (int)($_POST['section_id'] ?? 0);
             if ($sectionId < 1 || !sectionById($sectionId)) throw new RuntimeException('Выбери раздел');
@@ -131,6 +137,7 @@ $activeSectionId = (int)($_GET['section_id'] ?? ($_POST['section_id'] ?? ($secti
 $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 $commenters = commentersAll();
 $latestComments = commentsLatest(80);
+$welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
 $adminMode = (string)($_GET['mode'] ?? 'media');
 if (!in_array($adminMode, ['media', 'comments'], true)) {
     $adminMode = 'media';
@@ -304,6 +311,15 @@ function nextUniqueCodeName(string $base): string
 
     <main>
       <?php if ($adminMode === 'media'): ?>
+      <section class="card">
+        <h3>Приветственное сообщение (публичная часть)</h3>
+        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=media<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">
+          <input type="hidden" name="action" value="update_welcome"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+          <p><textarea class="in" name="welcome_text" rows="3" placeholder="Текст приветствия"><?= h($welcomeText) ?></textarea></p>
+          <button class="btn" type="submit">Сохранить приветствие</button>
+        </form>
+      </section>
+
       <section class="card">
         <h3>Загрузка фото “до” в выбранный раздел</h3>
         <?php if ($activeSectionId > 0): ?>

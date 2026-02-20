@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
 $sections = sectionsAll();
 $activeSectionId = (int)($_GET['section_id'] ?? 0);
 $activePhotoId = (int)($_GET['photo_id'] ?? 0);
+$welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
 
 $photo = $activePhotoId > 0 ? photoById($activePhotoId) : null;
 $comments = $photo ? commentsByPhoto($activePhotoId) : [];
@@ -126,7 +127,7 @@ function outputWatermarked(string $path, string $mime): never
   <title>Фотогалерея</title>
   <link rel="icon" type="image/svg+xml" href="<?= h(assetUrl('favicon.svg')) ?>">
   <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
-  <style>.note{color:#6b7280;font-size:13px}.page{display:grid;gap:16px;grid-template-columns:300px 1fr}.panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}.sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}.sec a.active{background:#eef4ff;color:#1f6feb}.cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}.card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}.card img{width:100%;height:130px;object-fit:cover}.cap{padding:8px;font-size:13px}.detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}.two{display:grid;gap:10px;grid-template-columns:1fr 1fr}.cmt{border-top:1px solid #eee;padding:8px 0}.muted{color:#6b7280;font-size:13px}</style>
+  <style>.note{color:#6b7280;font-size:13px}.page{display:grid;gap:16px;grid-template-columns:300px 1fr}.panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}.sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}.sec a.active{background:#eef4ff;color:#1f6feb}.cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}.card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}.card img{width:100%;height:130px;object-fit:cover}.cap{padding:8px;font-size:13px}.detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}.stack{display:grid;gap:12px;grid-template-columns:1fr}.cmt{border-top:1px solid #eee;padding:8px 0}.muted{color:#6b7280;font-size:13px}</style>
 </head>
 <body>
 <div class="app">
@@ -145,7 +146,7 @@ function outputWatermarked(string $path, string $mime): never
           <p><a href="?section_id=<?= (int)$photo['section_id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← к разделу</a></p>
           <h2><?= h((string)$photo['code_name']) ?></h2>
           <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
-          <div class="two">
+          <div class="stack">
             <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt=""></div><?php endif; ?>
             <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt=""></div><?php endif; ?>
           </div>
@@ -171,7 +172,7 @@ function outputWatermarked(string $path, string $mime): never
         <section class="panel">
           <h3>Фотографии</h3>
           <?php if ($activeSectionId < 1): ?>
-            <p class="muted">Выберите раздел слева.</p>
+            <p class="muted"><?= nl2br(h($welcomeText)) ?></p>
           <?php elseif ($photos === []): ?>
             <p class="muted">В разделе пока нет фотографий.</p>
           <?php else: ?>

@@ -155,3 +155,21 @@ function commentsLatest(int $limit = 100): array
             LIMIT ' . (int)$limit;
     return db()->query($sql)->fetchAll();
 }
+
+function settingGet(string $key, string $default = ''): string
+{
+    try {
+        $st = db()->prepare('SELECT `value` FROM site_settings WHERE `key`=:k');
+        $st->execute(['k' => $key]);
+        $v = $st->fetchColumn();
+        return is_string($v) ? $v : $default;
+    } catch (Throwable) {
+        return $default;
+    }
+}
+
+function settingSet(string $key, string $value): void
+{
+    $st = db()->prepare('INSERT INTO site_settings(`key`,`value`) VALUES (:k,:v) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)');
+    $st->execute(['k' => $key, 'v' => $value]);
+}
