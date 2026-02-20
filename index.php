@@ -132,7 +132,7 @@ function outputWatermarked(string $path, string $mime): never
 </head>
 <body>
 <div class="app">
-  <header class="topbar"><h1>Фотогалерея</h1><p class="subtitle">Простая галерея, которая управляется через файловый менеджер.</p></header>
+  <header class="topbar"><h1>Фотогалерея</h1></header>
   <div class="page">
     <aside class="panel sec">
       <h3>Разделы</h3>
@@ -191,6 +191,10 @@ function outputWatermarked(string $path, string $mime): never
       <?php endif; ?>
     </main>
   </div>
+
+  <footer class="footer">
+    <small class="footer-author">by <a href="https://t.me/andr33vru" target="_blank" rel="noopener noreferrer">andr33vru</a></small>
+  </footer>
 </div>
 </body>
 </html>
