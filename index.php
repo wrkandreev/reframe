@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     if ($token !== '' && $photoId > 0 && $text !== '') {
         $u = commenterByToken($token);
         if ($u) {
-            commentAdd($photoId, (int)$u['id'], mb_substr($text, 0, 1000));
+            commentAdd($photoId, (int)$u['id'], limitText($text, 1000));
         }
     }
 
@@ -43,6 +43,7 @@ $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
+function limitText(string $text, int $len): string { return function_exists('mb_substr') ? mb_substr($text, 0, $len) : substr($text, 0, $len); }
 
 function serveImage(): never
 {
