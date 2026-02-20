@@ -446,7 +446,8 @@ function nextUniqueCodeName(string $base): string
       try {
         if (ajaxInput) ajaxInput.value = '1';
         const fd = new FormData(form);
-        const r = await fetch(form.action, {
+        const endpoint = form.getAttribute('action') || window.location.href;
+        const r = await fetch(endpoint, {
           method: 'POST',
           body: fd,
           headers: {
