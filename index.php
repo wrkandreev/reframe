@@ -207,8 +207,8 @@ function outputWatermarked(string $path, string $mime): never
           <h2><?= h((string)$photo['code_name']) ?></h2>
           <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
           <div class="stack">
-            <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><div class="img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt=""></div></div><?php endif; ?>
-            <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><div class="img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt=""></div></div><?php endif; ?>
+            <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><div class="img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
+            <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><div class="img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
           </div>
 
           <h3 style="margin-top:16px">Комментарии</h3>
@@ -239,7 +239,7 @@ function outputWatermarked(string $path, string $mime): never
             <div class="cards">
               <?php foreach($photos as $p): ?>
                 <a class="card" href="?photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$activeSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
-                  <?php if (!empty($p['before_file_id'])): ?><div class="img-box thumb-img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt=""></div><?php endif; ?>
+                  <?php if (!empty($p['before_file_id'])): ?><div class="img-box thumb-img-box is-loading"><img class="js-public-image" src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt="" loading="lazy" decoding="async" fetchpriority="low"></div><?php endif; ?>
                   <?php if (!empty($p['after_file_id'])): ?><span title="Есть обработанная версия" style="position:absolute;top:8px;right:8px;background:rgba(31,111,235,.92);color:#fff;font-size:11px;line-height:1;padding:6px 7px;border-radius:999px">AI</span><?php endif; ?>
                   <div class="cap"><strong><?= h((string)$p['code_name']) ?></strong><br><span class="muted"><?= h((string)($p['description'] ?? '')) ?></span></div>
                 </a>
