@@ -118,6 +118,10 @@ $activeSectionId = (int)($_GET['section_id'] ?? ($_POST['section_id'] ?? ($secti
 $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 $commenters = commentersAll();
 $latestComments = commentsLatest(80);
+$adminMode = (string)($_GET['mode'] ?? 'media');
+if (!in_array($adminMode, ['media', 'comments'], true)) {
+    $adminMode = 'media';
+}
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
@@ -246,6 +250,15 @@ function nextUniqueCodeName(string $base): string
   <div class="grid">
     <aside>
       <section class="card">
+        <h3>Меню</h3>
+        <div class="sec">
+          <a class="<?= $adminMode==='media'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=media<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Разделы и фото</a>
+          <a class="<?= $adminMode==='comments'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Комментаторы и комментарии</a>
+        </div>
+      </section>
+
+      <?php if ($adminMode === 'media'): ?>
+      <section class="card">
         <h3>Разделы</h3>
         <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>">
           <input type="hidden" name="action" value="create_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
@@ -261,18 +274,23 @@ function nextUniqueCodeName(string $base): string
         </div>
       </section>
 
+      <?php endif; ?>
+
+      <?php if ($adminMode === 'comments'): ?>
       <section class="card">
         <h3>Комментаторы</h3>
-        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>">
+        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">
           <input type="hidden" name="action" value="create_commenter"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
           <p><input class="in" name="display_name" placeholder="Имя" required></p>
           <button class="btn" type="submit">Создать</button>
         </form>
         <div class="small" style="margin-top:8px">Ссылка доступа показывается в зелёном сообщении после создания.</div>
       </section>
+      <?php endif; ?>
     </aside>
 
     <main>
+      <?php if ($adminMode === 'media'): ?>
       <section class="card">
         <h3>Загрузка фото “до” в выбранный раздел</h3>
         <?php if ($activeSectionId > 0): ?>
@@ -293,7 +311,7 @@ function nextUniqueCodeName(string $base): string
           <tr><th>Превью</th><th>Поля</th><th>Действия</th></tr>
           <?php foreach($photos as $p): ?>
             <tr>
-              <td><?php if (!empty($p['before_file_id'])): ?><img src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" style="width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
+              <td><?php if (!empty($p['before_file_id'])): ?><img src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" style="width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
               <td>
                 <form method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>">
                   <input type="hidden" name="action" value="photo_update"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
@@ -315,6 +333,9 @@ function nextUniqueCodeName(string $base): string
         </table>
       </section>
 
+      <?php endif; ?>
+
+      <?php if ($adminMode === 'comments'): ?>
       <section class="card">
         <h3>Комментаторы и комментарии</h3>
         <table class="tbl"><tr><th>Пользователь</th><th>Действие</th></tr>
@@ -344,6 +365,7 @@ function nextUniqueCodeName(string $base): string
           <?php endforeach; ?>
         </table>
       </section>
+      <?php endif; ?>
     </main>
   </div>
 </div></body></html>
