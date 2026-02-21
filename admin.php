@@ -742,10 +742,12 @@ function nextUniqueCodeName(string $base): string
     .topic-node{border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#fff}
     .topic-node.level-2{margin-left:20px;border-color:#edf2fb;background:#fbfdff}
     .topic-node-head{font-size:12px;color:#667085;margin:0 0 8px}
-    .topic-row{display:grid;grid-template-columns:minmax(180px,1fr) 110px;gap:8px;align-items:center}
+    .topic-line{display:flex;align-items:flex-start;gap:8px}
+    .topic-row{display:grid;grid-template-columns:minmax(180px,1fr) 110px;gap:8px;align-items:center;flex:1}
     .topic-row .btn{height:36px}
+    .topic-delete-btn{height:36px;margin:0}
     .topic-children{display:grid;gap:8px;margin-top:8px}
-    @media (max-width:900px){.topic-row{grid-template-columns:1fr 110px}.topic-row .btn{width:100%}}
+    @media (max-width:900px){.topic-line{flex-direction:column}.topic-row{grid-template-columns:1fr 110px;width:100%}.topic-row .btn,.topic-delete-btn{width:100%}}
     .row-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
     .modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px}
     .modal[hidden]{display:none}
@@ -888,32 +890,36 @@ function nextUniqueCodeName(string $base): string
             <?php foreach($topicTree as $root): ?>
               <div class="topic-node level-1">
                 <p class="topic-node-head">Уровень 1</p>
-                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" class="topic-row js-topic-form">
-                  <input type="hidden" name="action" value="update_topic"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$root['id'] ?>">
-                  <input class="in" type="text" name="name" value="<?= h((string)$root['name']) ?>" required>
-                  <input class="in" type="number" name="sort_order" value="<?= (int)$root['sort_order'] ?>">
-                  <div class="small js-save-status" style="grid-column:1 / -1"></div>
-                </form>
-                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" style="margin-top:8px">
-                  <input type="hidden" name="action" value="delete_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$root['id'] ?>">
-                  <button class="btn btn-danger" type="submit" onclick="return confirm('Удалить тематику? Дочерние тематики и привязки к фото тоже удалятся.')">Удалить</button>
-                </form>
+                <div class="topic-line">
+                  <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" class="topic-row js-topic-form">
+                    <input type="hidden" name="action" value="update_topic"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$root['id'] ?>">
+                    <input class="in" type="text" name="name" value="<?= h((string)$root['name']) ?>" required>
+                    <input class="in" type="number" name="sort_order" value="<?= (int)$root['sort_order'] ?>">
+                    <div class="small js-save-status" style="grid-column:1 / -1"></div>
+                  </form>
+                  <form class="inline-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" onsubmit="return confirm('Удалить тематику? Дочерние тематики и привязки к фото тоже удалятся.')">
+                    <input type="hidden" name="action" value="delete_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$root['id'] ?>">
+                    <button class="btn btn-danger topic-delete-btn" type="submit">Удалить</button>
+                  </form>
+                </div>
 
                 <?php if (!empty($root['children'])): ?>
                   <div class="topic-children">
                     <?php foreach($root['children'] as $child): ?>
                       <div class="topic-node level-2">
                         <p class="topic-node-head">Уровень 2 · внутри «<?= h((string)$root['name']) ?>»</p>
-                        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" class="topic-row js-topic-form">
-                          <input type="hidden" name="action" value="update_topic"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$child['id'] ?>">
-                          <input class="in" type="text" name="name" value="<?= h((string)$child['name']) ?>" required>
-                          <input class="in" type="number" name="sort_order" value="<?= (int)$child['sort_order'] ?>">
-                          <div class="small js-save-status" style="grid-column:1 / -1"></div>
-                        </form>
-                        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" style="margin-top:8px">
-                          <input type="hidden" name="action" value="delete_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$child['id'] ?>">
-                          <button class="btn btn-danger" type="submit" onclick="return confirm('Удалить тематику?')">Удалить</button>
-                        </form>
+                        <div class="topic-line">
+                          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" class="topic-row js-topic-form">
+                            <input type="hidden" name="action" value="update_topic"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$child['id'] ?>">
+                            <input class="in" type="text" name="name" value="<?= h((string)$child['name']) ?>" required>
+                            <input class="in" type="number" name="sort_order" value="<?= (int)$child['sort_order'] ?>">
+                            <div class="small js-save-status" style="grid-column:1 / -1"></div>
+                          </form>
+                          <form class="inline-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" onsubmit="return confirm('Удалить тематику?')">
+                            <input type="hidden" name="action" value="delete_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$child['id'] ?>">
+                            <button class="btn btn-danger topic-delete-btn" type="submit">Удалить</button>
+                          </form>
+                        </div>
                       </div>
                     <?php endforeach; ?>
                   </div>

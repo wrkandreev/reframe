@@ -94,8 +94,14 @@ $detailIndex = 0;
 $prevPhotoId = 0;
 $nextPhotoId = 0;
 $detailSectionId = 0;
+$photoTopics = [];
 if ($photo) {
     $detailSectionId = (int)$photo['section_id'];
+    try {
+        $photoTopics = photoTopicsByPhotoId($activePhotoId);
+    } catch (Throwable) {
+        $photoTopics = [];
+    }
     $detailPhotos = photosForPublic($detailSectionId, $activeTopicId > 0 ? $activeTopicId : null);
     if ($activeTopicId > 0 && $detailPhotos !== []) {
         $foundInTopic = false;
@@ -294,10 +300,12 @@ function outputWatermarked(string $path, string $mime): never
     .card-badge{display:inline-flex;align-items:center;justify-content:center;background:rgba(17,24,39,.78);color:#fff;font-size:11px;line-height:1;padding:6px 7px;border-radius:999px}
     .card-badge.ai{background:rgba(31,111,235,.92)}
     .card-badge.comments{background:rgba(3,105,161,.9)}
-    .card img{width:100%;height:130px;object-fit:cover}
+    .card img{width:100%;height:130px;object-fit:contain;object-position:center;background:#f8fafc}
     .cap{padding:8px;font-size:13px}
     .detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}
     .stack{display:grid;gap:12px;grid-template-columns:1fr}
+    .detail-meta{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
+    .detail-meta-link{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #dbe3ef;background:#f8fbff;color:#1f3b7a;text-decoration:none;font-size:12px;line-height:1.25}
     .cmt{border-top:1px solid #eee;padding:8px 0}
     .muted{color:#6b7280;font-size:13px}
     .pager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb}
@@ -394,13 +402,21 @@ function outputWatermarked(string $path, string $mime): never
           </div>
         </details>
       <?php endif; ?>
-      <p class="note" style="margin-top:12px"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
+      <div class="nav-group">
+        <p class="note" style="margin:0"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
+      </div>
     </aside>
     <main>
       <?php if ($activePhotoId > 0 && $photo): ?>
         <section class="panel detail">
           <h2><?= h((string)$photo['code_name']) ?></h2>
           <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
+          <div class="detail-meta">
+            <a class="detail-meta-link" href="?section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Раздел: <?= h($sectionNames[$detailSectionId] ?? ('#' . (string)$detailSectionId)) ?></a>
+            <?php foreach($photoTopics as $topic): ?>
+              <a class="detail-meta-link" href="?section_id=<?= (int)$detailSectionId ?>&topic_id=<?= (int)$topic['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Тематика: <?= h((string)$topic['full_name']) ?></a>
+            <?php endforeach; ?>
+          </div>
           <div class="stack">
             <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
             <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
