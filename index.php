@@ -115,7 +115,7 @@ $photos = ($activeSectionId > 0 || $activeTopicId > 0)
     ? photosForPublic($filterMode === 'section' ? $activeSectionId : null, $filterMode === 'topic' ? $activeTopicId : null)
     : [];
 $photoCommentCounts = photoCommentCountsByPhotoIds(array_map(static fn(array $p): int => (int)$p['id'], $photos));
-$isHomePage = $activeSectionId < 1 && $activePhotoId < 1;
+$isHomePage = $activeSectionId < 1 && $activePhotoId < 1 && $activeTopicId < 1;
 $isTopicMode = $filterMode === 'topic';
 $isSectionMode = $filterMode === 'section';
 
