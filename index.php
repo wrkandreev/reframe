@@ -15,6 +15,8 @@ $viewer = $viewerToken !== '' ? commenterByToken($viewerToken) : null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'add_comment') {
     $token = trim((string)($_POST['viewer'] ?? ''));
     $photoId = (int)($_POST['photo_id'] ?? 0);
+    $sectionId = (int)($_POST['section_id'] ?? 0);
+    $topicId = (int)($_POST['topic_id'] ?? 0);
     $text = trim((string)($_POST['comment_text'] ?? ''));
 
     if ($token !== '' && $photoId > 0 && $text !== '') {
@@ -25,6 +27,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     }
 
     $redirect = './?photo_id=' . $photoId;
+    if ($sectionId > 0) {
+        $redirect .= '&section_id=' . $sectionId;
+    }
+    if ($topicId > 0) {
+        $redirect .= '&topic_id=' . $topicId;
+    }
     if ($token !== '') {
         $redirect .= '&viewer=' . urlencode($token);
     }
@@ -35,11 +43,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
 $sections = sectionsAll();
 $activeSectionId = (int)($_GET['section_id'] ?? 0);
 $activePhotoId = (int)($_GET['photo_id'] ?? 0);
+$activeTopicId = (int)($_GET['topic_id'] ?? 0);
 $welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
 
 $photo = $activePhotoId > 0 ? photoById($activePhotoId) : null;
+if ($photo && $activeSectionId < 1) {
+    $activeSectionId = (int)$photo['section_id'];
+}
 $comments = $photo ? commentsByPhoto($activePhotoId) : [];
-$photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
+$topics = [];
+$topicCounts = [];
+try {
+    $topics = topicsAllForSelect();
+    if ($activeTopicId > 0) {
+        if (!topicById($activeTopicId)) {
+            $activeTopicId = 0;
+        }
+    }
+    $topicCounts = topicPhotoCounts($activeSectionId > 0 ? $activeSectionId : null);
+} catch (Throwable) {
+    $topics = [];
+    $topicCounts = [];
+    $activeTopicId = 0;
+}
+
+$photos = ($activeSectionId > 0 || $activeTopicId > 0)
+    ? photosForPublic($activeSectionId > 0 ? $activeSectionId : null, $activeTopicId > 0 ? $activeTopicId : null)
+    : [];
+$photoCommentCounts = photoCommentCountsByPhotoIds(array_map(static fn(array $p): int => (int)$p['id'], $photos));
 $isHomePage = $activeSectionId < 1 && $activePhotoId < 1;
 
 $detailTotal = 0;
@@ -49,7 +80,20 @@ $nextPhotoId = 0;
 $detailSectionId = 0;
 if ($photo) {
     $detailSectionId = (int)$photo['section_id'];
-    $detailPhotos = photosBySection($detailSectionId);
+    $detailPhotos = photosForPublic($detailSectionId, $activeTopicId > 0 ? $activeTopicId : null);
+    if ($activeTopicId > 0 && $detailPhotos !== []) {
+        $foundInTopic = false;
+        foreach ($detailPhotos as $d) {
+            if ((int)$d['id'] === $activePhotoId) {
+                $foundInTopic = true;
+                break;
+            }
+        }
+        if (!$foundInTopic) {
+            $detailPhotos = photosForPublic($detailSectionId, null);
+            $activeTopicId = 0;
+        }
+    }
     $detailTotal = count($detailPhotos);
     foreach ($detailPhotos as $i => $p) {
         if ((int)$p['id'] !== $activePhotoId) {
@@ -187,8 +231,17 @@ function outputWatermarked(string $path, string $mime): never
     .sec{display:grid;gap:6px}
     .sec a{display:block;padding:10px 12px;border-radius:10px;line-height:1.35;text-decoration:none;color:#111}
     .sec a.active{background:#eef4ff;color:#1f6feb}
+    .topic-nav{margin-top:12px;padding-top:12px;border-top:1px solid #e8edf5;display:grid;gap:6px}
+    .topic-link{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111;font-size:13px;line-height:1.3}
+    .topic-link.level-1{padding-left:20px}
+    .topic-link.active{background:#edf7f0;color:#146236}
+    .topic-link.disabled{opacity:.55}
     .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
     .card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
+    .card-badges{position:absolute;top:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;z-index:4;pointer-events:none}
+    .card-badge{display:inline-flex;align-items:center;justify-content:center;background:rgba(17,24,39,.78);color:#fff;font-size:11px;line-height:1;padding:6px 7px;border-radius:999px}
+    .card-badge.ai{background:rgba(31,111,235,.92)}
+    .card-badge.comments{background:rgba(3,105,161,.9)}
     .card img{width:100%;height:130px;object-fit:cover}
     .cap{padding:8px;font-size:13px}
     .detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}
@@ -261,8 +314,20 @@ function outputWatermarked(string $path, string $mime): never
         <?php endif; ?>
       </div>
       <?php foreach($sections as $s): ?>
-        <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
+        <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
       <?php endforeach; ?>
+
+      <?php if ($topics !== []): ?>
+        <div class="topic-nav">
+          <strong style="font-size:13px">Тематики</strong>
+          <a class="topic-link<?= $activeTopicId < 1 ? ' active' : '' ?>" href="?<?= $activeSectionId > 0 ? 'section_id=' . $activeSectionId : '' ?><?= $viewerToken!=='' ? (($activeSectionId > 0 ? '&' : '') . 'viewer=' . urlencode($viewerToken)) : '' ?>">Все тематики</a>
+          <?php foreach($topics as $t): ?>
+            <?php $topicCount = (int)($topicCounts[(int)$t['id']] ?? 0); ?>
+            <?php if ($activeSectionId > 0 && $topicCount < 1) continue; ?>
+            <a class="topic-link level-<?= (int)$t['level'] ?><?= (int)$t['id'] === $activeTopicId ? ' active' : '' ?>" href="?<?= $activeSectionId > 0 ? 'section_id=' . $activeSectionId . '&' : '' ?>topic_id=<?= (int)$t['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= (int)$t['level'] === 1 ? '— ' : '' ?><?= h((string)$t['full_name']) ?> <span class="muted">(<?= $topicCount ?>)</span></a>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
       <p class="note" style="margin-top:12px"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
     </aside>
     <main>
@@ -277,9 +342,11 @@ function outputWatermarked(string $path, string $mime): never
 
           <h3 style="margin-top:16px">Комментарии</h3>
           <?php if ($viewer): ?>
-            <form method="post" action="?photo_id=<?= (int)$photo['id'] ?>&viewer=<?= urlencode($viewerToken) ?>">
+            <form method="post" action="?photo_id=<?= (int)$photo['id'] ?>&section_id=<?= (int)$detailSectionId ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?>&viewer=<?= urlencode($viewerToken) ?>">
               <input type="hidden" name="action" value="add_comment">
               <input type="hidden" name="photo_id" value="<?= (int)$photo['id'] ?>">
+              <input type="hidden" name="section_id" value="<?= (int)$detailSectionId ?>">
+              <input type="hidden" name="topic_id" value="<?= (int)$activeTopicId ?>">
               <input type="hidden" name="viewer" value="<?= h($viewerToken) ?>">
               <textarea name="comment_text" required style="width:100%;min-height:80px;border:1px solid #d1d5db;border-radius:8px;padding:8px"></textarea>
               <p><button class="btn" type="submit">Отправить</button></p>
@@ -296,8 +363,8 @@ function outputWatermarked(string $path, string $mime): never
             <div class="pager">
               <div class="muted">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?></div>
               <div class="pager-actions">
-                <a class="pager-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
-                <a class="pager-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
+                <a class="pager-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
+                <a class="pager-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
               </div>
             </div>
           <?php endif; ?>
@@ -305,16 +372,20 @@ function outputWatermarked(string $path, string $mime): never
       <?php else: ?>
         <section class="panel">
           <h3>Фотографии</h3>
-          <?php if ($activeSectionId < 1): ?>
+          <?php if ($activeSectionId < 1 && $activeTopicId < 1): ?>
             <p class="muted"><?= nl2br(h($welcomeText)) ?></p>
           <?php elseif ($photos === []): ?>
             <p class="muted">В разделе пока нет фотографий.</p>
           <?php else: ?>
             <div class="cards">
               <?php foreach($photos as $p): ?>
-                <a class="card" href="?photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$activeSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
+                <?php $cardCommentCount = (int)($photoCommentCounts[(int)$p['id']] ?? 0); ?>
+                <a class="card" href="?photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$p['section_id'] ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
                   <?php if (!empty($p['before_file_id'])): ?><div class="img-box thumb-img-box"><img src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt="" loading="lazy" decoding="async" fetchpriority="low"></div><?php endif; ?>
-                  <?php if (!empty($p['after_file_id'])): ?><span title="Есть обработанная версия" style="position:absolute;top:8px;right:8px;background:rgba(31,111,235,.92);color:#fff;font-size:11px;line-height:1;padding:6px 7px;border-radius:999px">AI</span><?php endif; ?>
+                  <div class="card-badges">
+                    <?php if ($cardCommentCount > 0): ?><span class="card-badge comments" title="Комментариев: <?= $cardCommentCount ?>">💬 <?= $cardCommentCount ?></span><?php endif; ?>
+                    <?php if (!empty($p['after_file_id'])): ?><span class="card-badge ai" title="Есть обработанная версия">AI</span><?php endif; ?>
+                  </div>
                   <div class="cap"><strong><?= h((string)$p['code_name']) ?></strong><br><span class="muted"><?= h((string)($p['description'] ?? '')) ?></span></div>
                 </a>
               <?php endforeach; ?>
@@ -331,10 +402,10 @@ function outputWatermarked(string $path, string $mime): never
 </div>
 <?php if ($hasMobilePhotoNav): ?>
   <nav class="mobile-photo-nav" aria-label="Навигация по фото">
-    <a class="mobile-nav-link" href="?section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">К разделу</a>
+    <a class="mobile-nav-link" href="?section_id=<?= (int)$detailSectionId ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">К разделу</a>
     <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?></div>
-    <a class="mobile-nav-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $prevPhotoId < 1 ? 'true' : 'false' ?>">←</a>
-    <a class="mobile-nav-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $nextPhotoId < 1 ? 'true' : 'false' ?>">→</a>
+    <a class="mobile-nav-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $prevPhotoId < 1 ? 'true' : 'false' ?>">←</a>
+    <a class="mobile-nav-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $nextPhotoId < 1 ? 'true' : 'false' ?>">→</a>
   </nav>
 <?php endif; ?>
 <script>

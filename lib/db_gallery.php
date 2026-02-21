@@ -52,6 +52,38 @@ function photosBySection(int $sectionId): array
     return $st->fetchAll();
 }
 
+function photosForPublic(?int $sectionId = null, ?int $topicId = null): array
+{
+    $sql = 'SELECT p.*,
+                   bf.id AS before_file_id, bf.file_path AS before_path,
+                   af.id AS after_file_id, af.file_path AS after_path
+            FROM photos p
+            LEFT JOIN photo_files bf ON bf.photo_id=p.id AND bf.kind="before"
+            LEFT JOIN photo_files af ON af.photo_id=p.id AND af.kind="after"';
+
+    $where = [];
+    $params = [];
+
+    if ($topicId !== null && $topicId > 0) {
+        $sql .= ' INNER JOIN photo_topics ptf ON ptf.photo_id=p.id AND ptf.topic_id=:tid';
+        $params['tid'] = $topicId;
+    }
+
+    if ($sectionId !== null && $sectionId > 0) {
+        $where[] = 'p.section_id=:sid';
+        $params['sid'] = $sectionId;
+    }
+
+    if ($where !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $where);
+    }
+
+    $sql .= ' ORDER BY p.sort_order, p.id DESC';
+    $st = db()->prepare($sql);
+    $st->execute($params);
+    return $st->fetchAll();
+}
+
 function photoById(int $photoId): ?array
 {
     $sql = 'SELECT p.*, 
@@ -64,6 +96,48 @@ function photoById(int $photoId): ?array
     $st = db()->prepare($sql);
     $st->execute(['id' => $photoId]);
     return $st->fetch() ?: null;
+}
+
+function photoCommentCountsByPhotoIds(array $photoIds): array
+{
+    $photoIds = array_values(array_unique(array_map('intval', $photoIds)));
+    if ($photoIds === []) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($photoIds), '?'));
+    $sql = "SELECT photo_id, COUNT(*) AS cnt FROM photo_comments WHERE photo_id IN ($placeholders) GROUP BY photo_id";
+    $st = db()->prepare($sql);
+    $st->execute($photoIds);
+
+    $map = [];
+    foreach ($st->fetchAll() as $row) {
+        $map[(int)$row['photo_id']] = (int)$row['cnt'];
+    }
+    return $map;
+}
+
+function topicPhotoCounts(?int $sectionId = null): array
+{
+    $sql = 'SELECT pt.topic_id, COUNT(DISTINCT p.id) AS cnt
+            FROM photo_topics pt
+            JOIN photos p ON p.id=pt.photo_id';
+    $params = [];
+
+    if ($sectionId !== null && $sectionId > 0) {
+        $sql .= ' WHERE p.section_id=:sid';
+        $params['sid'] = $sectionId;
+    }
+
+    $sql .= ' GROUP BY pt.topic_id';
+    $st = db()->prepare($sql);
+    $st->execute($params);
+
+    $map = [];
+    foreach ($st->fetchAll() as $row) {
+        $map[(int)$row['topic_id']] = (int)$row['cnt'];
+    }
+    return $map;
 }
 
 function topicById(int $id): ?array
