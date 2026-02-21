@@ -98,6 +98,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Тематика создана';
         }
 
+        if ($action === 'update_topic') {
+            $topicId = (int)($_POST['topic_id'] ?? 0);
+            $name = trim((string)($_POST['name'] ?? ''));
+            $sort = (int)($_POST['sort_order'] ?? 1000);
+            $parentId = (int)($_POST['parent_id'] ?? 0);
+
+            if ($topicId < 1) throw new RuntimeException('Некорректная тематика');
+            if ($name === '') throw new RuntimeException('Название тематики пустое');
+
+            $topic = topicById($topicId);
+            if (!$topic) throw new RuntimeException('Тематика не найдена');
+
+            if ($parentId === $topicId) {
+                throw new RuntimeException('Тематика не может быть родителем самой себя');
+            }
+
+            if ($parentId > 0) {
+                $parent = topicById($parentId);
+                if (!$parent) throw new RuntimeException('Родительская тематика не найдена');
+                if (!empty($parent['parent_id'])) {
+                    throw new RuntimeException('Разрешено только 2 уровня вложенности тематик');
+                }
+                if (topicChildrenCount($topicId) > 0) {
+                    throw new RuntimeException('Тематика с дочерними элементами должна оставаться в верхнем уровне');
+                }
+            }
+
+            topicUpdate($topicId, $name, $parentId > 0 ? $parentId : null, $sort);
+            $message = 'Тематика обновлена';
+        }
+
+        if ($action === 'delete_topic') {
+            $topicId = (int)($_POST['topic_id'] ?? 0);
+            if ($topicId < 1) throw new RuntimeException('Некорректная тематика');
+            if (!topicById($topicId)) throw new RuntimeException('Тематика не найдена');
+
+            topicDelete($topicId);
+            $message = 'Тематика удалена';
+        }
+
         if ($action === 'delete_section') {
             $sectionId = (int)($_POST['section_id'] ?? 0);
             if ($sectionId < 1) throw new RuntimeException('Некорректный раздел');
@@ -819,11 +859,33 @@ function nextUniqueCodeName(string $base): string
           <p class="small">Тематик пока нет.</p>
         <?php else: ?>
           <table class="tbl">
-            <tr><th>Тематика</th><th>Уровень</th></tr>
+            <tr><th>Тематика</th><th>Уровень</th><th>Действия</th></tr>
             <?php foreach($topics as $topic): ?>
               <tr>
-                <td><?= h((string)$topic['full_name']) ?></td>
+                <td>
+                  <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" style="display:grid;gap:8px;min-width:320px">
+                    <input type="hidden" name="action" value="update_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$topic['id'] ?>">
+                    <input class="in" type="text" name="name" value="<?= h((string)$topic['name']) ?>" required>
+                    <div style="display:grid;grid-template-columns:1fr 110px;gap:8px">
+                      <select class="in" name="parent_id">
+                        <option value="0" <?= empty($topic['parent_id']) ? 'selected' : '' ?>>Без родителя</option>
+                        <?php foreach($topicRoots as $root): ?>
+                          <?php if ((int)$root['id'] === (int)$topic['id']) continue; ?>
+                          <option value="<?= (int)$root['id'] ?>" <?= (int)$topic['parent_id'] === (int)$root['id'] ? 'selected' : '' ?>>Внутри: <?= h((string)$root['name']) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                      <input class="in" type="number" name="sort_order" value="<?= (int)$topic['sort_order'] ?>">
+                    </div>
+                    <button class="btn btn-secondary" type="submit">Сохранить</button>
+                  </form>
+                </td>
                 <td><?= (int)$topic['level'] === 0 ? '1' : '2' ?></td>
+                <td>
+                  <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" onsubmit="return confirm('Удалить тематику? Дочерние тематики и привязки к фото тоже удалятся.')">
+                    <input type="hidden" name="action" value="delete_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$topic['id'] ?>">
+                    <button class="btn btn-danger" type="submit">Удалить</button>
+                  </form>
+                </td>
               </tr>
             <?php endforeach; ?>
           </table>
@@ -924,12 +986,11 @@ function nextUniqueCodeName(string $base): string
 
                   <div class="topic-controls">
                     <select class="in js-topic-select" <?= $topics === [] ? 'disabled' : '' ?>>
-                      <option value="">Выбери тематику</option>
+                      <option value="">Выбери тематику (добавится сразу)</option>
                       <?php foreach($topics as $topic): ?>
                         <option value="<?= (int)$topic['id'] ?>"><?= (int)$topic['level'] === 1 ? '— ' : '' ?><?= h((string)$topic['full_name']) ?></option>
                       <?php endforeach; ?>
                     </select>
-                    <button class="btn btn-secondary btn-xs js-topic-add" type="button" <?= $topics === [] ? 'disabled' : '' ?>>Добавить</button>
                   </div>
                   <div class="topic-status js-topic-status"></div>
                 </div>
@@ -1380,9 +1441,7 @@ function nextUniqueCodeName(string $base): string
       throw new Error('Некорректные параметры');
     }
 
-    const addBtn = editor.querySelector('.js-topic-add');
     const select = editor.querySelector('.js-topic-select');
-    if (addBtn) addBtn.disabled = true;
     if (select) select.disabled = true;
 
     const fd = new FormData();
@@ -1419,28 +1478,28 @@ function nextUniqueCodeName(string $base): string
         select.value = '';
       }
     } finally {
-      if (addBtn) addBtn.disabled = false;
       if (select) select.disabled = false;
     }
   };
 
-  document.addEventListener('click', (e) => {
-    const addBtn = e.target.closest('.js-topic-add');
-    if (addBtn) {
-      const editor = addBtn.closest('.js-topic-editor');
-      if (!editor) return;
-      const select = editor.querySelector('.js-topic-select');
-      const topicId = Number(select?.value || 0);
+  document.querySelectorAll('.js-topic-editor').forEach((editor) => {
+    const select = editor.querySelector('.js-topic-select');
+    if (!select) {
+      return;
+    }
+
+    select.addEventListener('change', () => {
+      const topicId = Number(select.value || 0);
       if (topicId < 1) {
-        setTopicStatus(editor, 'Сначала выбери тематику', true);
         return;
       }
 
       postTopicAction(editor, 'attach_photo_topic', topicId)
         .catch((err) => setTopicStatus(editor, err?.message || 'Ошибка добавления', true));
-      return;
-    }
+    });
+  });
 
+  document.addEventListener('click', (e) => {
     const removeBtn = e.target.closest('.js-topic-remove');
     if (removeBtn) {
       const editor = removeBtn.closest('.js-topic-editor');

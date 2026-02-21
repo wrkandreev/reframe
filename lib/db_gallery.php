@@ -109,6 +109,23 @@ function topicCreate(string $name, ?int $parentId, int $sortOrder = 1000): int
     return (int)db()->lastInsertId();
 }
 
+function topicUpdate(int $topicId, string $name, ?int $parentId, int $sortOrder = 1000): void
+{
+    $st = db()->prepare('UPDATE topics SET parent_id=:pid, name=:name, sort_order=:sort WHERE id=:id');
+    $st->bindValue('id', $topicId, PDO::PARAM_INT);
+    $st->bindValue('pid', $parentId, $parentId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+    $st->bindValue('name', $name, PDO::PARAM_STR);
+    $st->bindValue('sort', $sortOrder, PDO::PARAM_INT);
+    $st->execute();
+}
+
+function topicChildrenCount(int $topicId): int
+{
+    $st = db()->prepare('SELECT COUNT(*) FROM topics WHERE parent_id=:id');
+    $st->execute(['id' => $topicId]);
+    return (int)$st->fetchColumn();
+}
+
 function topicDelete(int $topicId): void
 {
     $st = db()->prepare('DELETE FROM topics WHERE id=:id');
