@@ -66,6 +66,128 @@ function photoById(int $photoId): ?array
     return $st->fetch() ?: null;
 }
 
+function topicById(int $id): ?array
+{
+    $st = db()->prepare('SELECT * FROM topics WHERE id=:id');
+    $st->execute(['id' => $id]);
+    return $st->fetch() ?: null;
+}
+
+function topicsAllForSelect(): array
+{
+    $sql = 'SELECT t.id, t.parent_id, t.name, t.sort_order,
+                   p.name AS parent_name, p.sort_order AS parent_sort_order
+            FROM topics t
+            LEFT JOIN topics p ON p.id=t.parent_id
+            ORDER BY
+              CASE WHEN t.parent_id IS NULL THEN t.sort_order ELSE p.sort_order END,
+              CASE WHEN t.parent_id IS NULL THEN t.name ELSE p.name END,
+              CASE WHEN t.parent_id IS NULL THEN 0 ELSE 1 END,
+              t.sort_order,
+              t.name';
+    $rows = db()->query($sql)->fetchAll();
+
+    foreach ($rows as &$row) {
+        $isRoot = empty($row['parent_id']);
+        $row['level'] = $isRoot ? 0 : 1;
+        $row['full_name'] = $isRoot
+            ? (string)$row['name']
+            : ((string)$row['parent_name'] . ' / ' . (string)$row['name']);
+    }
+    unset($row);
+
+    return $rows;
+}
+
+function topicCreate(string $name, ?int $parentId, int $sortOrder = 1000): int
+{
+    $st = db()->prepare('INSERT INTO topics(parent_id, name, sort_order) VALUES (:pid,:name,:sort)');
+    $st->bindValue('pid', $parentId, $parentId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+    $st->bindValue('name', $name, PDO::PARAM_STR);
+    $st->bindValue('sort', $sortOrder, PDO::PARAM_INT);
+    $st->execute();
+    return (int)db()->lastInsertId();
+}
+
+function topicDelete(int $topicId): void
+{
+    $st = db()->prepare('DELETE FROM topics WHERE id=:id');
+    $st->execute(['id' => $topicId]);
+}
+
+function photoTopicAttach(int $photoId, int $topicId): void
+{
+    $st = db()->prepare('INSERT IGNORE INTO photo_topics(photo_id, topic_id) VALUES (:pid,:tid)');
+    $st->execute(['pid' => $photoId, 'tid' => $topicId]);
+}
+
+function photoTopicDetach(int $photoId, int $topicId): void
+{
+    $st = db()->prepare('DELETE FROM photo_topics WHERE photo_id=:pid AND topic_id=:tid');
+    $st->execute(['pid' => $photoId, 'tid' => $topicId]);
+}
+
+function photoTopicsByPhotoId(int $photoId): array
+{
+    $sql = 'SELECT t.id, t.parent_id, t.name, t.sort_order,
+                   p.name AS parent_name,
+                   CASE WHEN t.parent_id IS NULL THEN t.name ELSE CONCAT(p.name, " / ", t.name) END AS full_name
+            FROM photo_topics pt
+            JOIN topics t ON t.id=pt.topic_id
+            LEFT JOIN topics p ON p.id=t.parent_id
+            WHERE pt.photo_id=:pid
+            ORDER BY
+              CASE WHEN t.parent_id IS NULL THEN t.sort_order ELSE p.sort_order END,
+              CASE WHEN t.parent_id IS NULL THEN t.name ELSE p.name END,
+              CASE WHEN t.parent_id IS NULL THEN 0 ELSE 1 END,
+              t.sort_order,
+              t.name';
+    $st = db()->prepare($sql);
+    $st->execute(['pid' => $photoId]);
+    return $st->fetchAll();
+}
+
+function photoTopicsMapByPhotoIds(array $photoIds): array
+{
+    $photoIds = array_values(array_unique(array_map('intval', $photoIds)));
+    if ($photoIds === []) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($photoIds), '?'));
+    $sql = "SELECT pt.photo_id, t.id, t.parent_id, t.name, t.sort_order,
+                   p.name AS parent_name,
+                   CASE WHEN t.parent_id IS NULL THEN t.name ELSE CONCAT(p.name, ' / ', t.name) END AS full_name
+            FROM photo_topics pt
+            JOIN topics t ON t.id=pt.topic_id
+            LEFT JOIN topics p ON p.id=t.parent_id
+            WHERE pt.photo_id IN ($placeholders)
+            ORDER BY pt.photo_id,
+              CASE WHEN t.parent_id IS NULL THEN t.sort_order ELSE p.sort_order END,
+              CASE WHEN t.parent_id IS NULL THEN t.name ELSE p.name END,
+              CASE WHEN t.parent_id IS NULL THEN 0 ELSE 1 END,
+              t.sort_order,
+              t.name";
+
+    $st = db()->prepare($sql);
+    $st->execute($photoIds);
+
+    $map = [];
+    foreach ($st->fetchAll() as $row) {
+        $pid = (int)$row['photo_id'];
+        if (!isset($map[$pid])) {
+            $map[$pid] = [];
+        }
+        $map[$pid][] = [
+            'id' => (int)$row['id'],
+            'parent_id' => $row['parent_id'] !== null ? (int)$row['parent_id'] : null,
+            'name' => (string)$row['name'],
+            'full_name' => (string)$row['full_name'],
+        ];
+    }
+    return $map;
+}
+
 function photoCreate(int $sectionId, string $codeName, ?string $description, int $sortOrder): int
 {
     $st = db()->prepare('INSERT INTO photos(section_id, code_name, description, sort_order) VALUES (:sid,:code,:descr,:sort)');

@@ -79,6 +79,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        if ($action === 'create_topic') {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $sort = (int)($_POST['sort_order'] ?? 1000);
+            $parentId = (int)($_POST['parent_id'] ?? 0);
+            $parent = null;
+            if ($name === '') throw new RuntimeException('Название тематики пустое');
+
+            if ($parentId > 0) {
+                $parent = topicById($parentId);
+                if (!$parent) throw new RuntimeException('Родительская тематика не найдена');
+                if (!empty($parent['parent_id'])) {
+                    throw new RuntimeException('Разрешено только 2 уровня вложенности тематик');
+                }
+            }
+
+            topicCreate($name, $parentId > 0 ? $parentId : null, $sort);
+            $message = 'Тематика создана';
+        }
+
         if ($action === 'delete_section') {
             $sectionId = (int)($_POST['section_id'] ?? 0);
             if ($sectionId < 1) throw new RuntimeException('Некорректный раздел');
@@ -166,6 +185,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'photo_id' => $photoId,
                     'preview_url' => $previewUrl,
                 ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+        }
+
+        if ($action === 'attach_photo_topic') {
+            $photoId = (int)($_POST['photo_id'] ?? 0);
+            $topicId = (int)($_POST['topic_id'] ?? 0);
+            if ($photoId < 1 || !photoById($photoId)) throw new RuntimeException('Фото не найдено');
+            if ($topicId < 1 || !topicById($topicId)) throw new RuntimeException('Тематика не найдена');
+
+            photoTopicAttach($photoId, $topicId);
+            $topics = array_map(static fn(array $t): array => [
+                'id' => (int)$t['id'],
+                'full_name' => (string)$t['full_name'],
+            ], photoTopicsByPhotoId($photoId));
+            $message = 'Тематика добавлена';
+
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'message' => $message, 'photo_id' => $photoId, 'topics' => $topics], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+        }
+
+        if ($action === 'detach_photo_topic') {
+            $photoId = (int)($_POST['photo_id'] ?? 0);
+            $topicId = (int)($_POST['topic_id'] ?? 0);
+            if ($photoId < 1 || !photoById($photoId)) throw new RuntimeException('Фото не найдено');
+            if ($topicId < 1) throw new RuntimeException('Тематика не найдена');
+
+            photoTopicDetach($photoId, $topicId);
+            $topics = array_map(static fn(array $t): array => [
+                'id' => (int)$t['id'],
+                'full_name' => (string)$t['full_name'],
+            ], photoTopicsByPhotoId($photoId));
+            $message = 'Тематика удалена';
+
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'message' => $message, 'photo_id' => $photoId, 'topics' => $topics], JSON_UNESCAPED_UNICODE);
                 exit;
             }
         }
@@ -281,7 +340,7 @@ $adminMode = (string)($_GET['mode'] ?? 'photos');
 if ($adminMode === 'media') {
     $adminMode = 'photos';
 }
-if (!in_array($adminMode, ['sections', 'photos', 'commenters', 'comments', 'welcome'], true)) {
+if (!in_array($adminMode, ['sections', 'photos', 'topics', 'commenters', 'comments', 'welcome'], true)) {
     $adminMode = 'photos';
 }
 $previewVersion = (string)time();
@@ -289,6 +348,21 @@ $commentPhotoQuery = trim((string)($_GET['comment_photo'] ?? ($_POST['comment_ph
 $commentUserQuery = trim((string)($_GET['comment_user'] ?? ($_POST['comment_user'] ?? '')));
 $filteredComments = commentsSearch($commentPhotoQuery, $commentUserQuery, 200);
 $photoCommentCounts = commentCountsByPhotoIds(array_map(static fn(array $p): int => (int)$p['id'], $photos));
+$topics = [];
+$topicRoots = [];
+$photoTopicsMap = [];
+$topicsError = '';
+try {
+    $topics = topicsAllForSelect();
+    foreach ($topics as $topic) {
+        if ((int)$topic['level'] === 0) {
+            $topicRoots[] = $topic;
+        }
+    }
+    $photoTopicsMap = photoTopicsMapByPhotoIds(array_map(static fn(array $p): int => (int)$p['id'], $photos));
+} catch (Throwable $e) {
+    $topicsError = 'Тематики недоступны. Запусти миграции: php scripts/migrate.php';
+}
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
@@ -598,6 +672,14 @@ function nextUniqueCodeName(string $base): string
     .preview-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:nowrap}
     .preview-actions form{margin:0}
     .is-hidden{display:none}
+    .topic-editor{display:grid;gap:8px;margin-top:10px}
+    .topic-controls{display:flex;gap:8px;align-items:center}
+    .topic-controls .in{min-width:0}
+    .topic-list{display:flex;flex-wrap:wrap;gap:6px}
+    .topic-chip{display:inline-flex;align-items:center;gap:6px;background:#f5f8ff;border:1px solid #dbe7ff;border-radius:999px;padding:4px 8px;font-size:12px;color:#1f3b7a;white-space:nowrap}
+    .topic-chip button{border:0;background:transparent;color:#a11b1b;cursor:pointer;font-size:14px;line-height:1;padding:0}
+    .topic-empty{font-size:12px;color:#667085}
+    .topic-status{font-size:12px;min-height:16px;color:#667085}
     .row-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
     .modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px}
     .modal[hidden]{display:none}
@@ -627,6 +709,7 @@ function nextUniqueCodeName(string $base): string
         <div class="sec">
           <a class="<?= $adminMode==='sections'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=sections<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Разделы</a>
           <a class="<?= $adminMode==='photos'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Фото</a>
+          <a class="<?= $adminMode==='topics'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=topics">Тематики</a>
           <a class="<?= $adminMode==='welcome'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">Приветственное сообщение</a>
           <a class="<?= $adminMode==='commenters'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">Пользователи комментариев</a>
           <a class="<?= $adminMode==='comments'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Комментарии</a>
@@ -705,6 +788,49 @@ function nextUniqueCodeName(string $base): string
 
       <?php endif; ?>
 
+      <?php if ($adminMode === 'topics'): ?>
+      <section class="card">
+        <h3>Создать тематику</h3>
+        <?php if ($topicsError !== ''): ?>
+          <p class="small" style="color:#b42318"><?= h($topicsError) ?></p>
+        <?php else: ?>
+          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics">
+            <input type="hidden" name="action" value="create_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+            <p><input class="in" name="name" placeholder="Название тематики" required></p>
+            <p>
+              <select class="in" name="parent_id">
+                <option value="0">Без родителя (верхний уровень)</option>
+                <?php foreach($topicRoots as $root): ?>
+                  <option value="<?= (int)$root['id'] ?>">Внутри: <?= h((string)$root['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </p>
+            <p><input class="in" type="number" name="sort_order" value="1000"></p>
+            <button class="btn" type="submit">Создать тематику</button>
+          </form>
+        <?php endif; ?>
+      </section>
+
+      <section class="card">
+        <h3>Список тематик</h3>
+        <?php if ($topicsError !== ''): ?>
+          <p class="small" style="color:#b42318"><?= h($topicsError) ?></p>
+        <?php elseif ($topics === []): ?>
+          <p class="small">Тематик пока нет.</p>
+        <?php else: ?>
+          <table class="tbl">
+            <tr><th>Тематика</th><th>Уровень</th></tr>
+            <?php foreach($topics as $topic): ?>
+              <tr>
+                <td><?= h((string)$topic['full_name']) ?></td>
+                <td><?= (int)$topic['level'] === 0 ? '1' : '2' ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </table>
+        <?php endif; ?>
+      </section>
+      <?php endif; ?>
+
       <?php if ($adminMode === 'photos'): ?>
       <section class="card">
         <h3>Загрузка фото “до” в выбранный раздел</h3>
@@ -722,10 +848,14 @@ function nextUniqueCodeName(string $base): string
 
       <section class="card">
         <h3>Фото в разделе</h3>
+        <?php if ($topicsError !== ''): ?>
+          <p class="small" style="color:#b42318"><?= h($topicsError) ?></p>
+        <?php endif; ?>
         <table class="tbl">
           <tr><th>До</th><th>После</th><th>Поля</th><th>Действия</th></tr>
           <?php foreach($photos as $p): ?>
             <?php $photoCommentCount = (int)($photoCommentCounts[(int)$p['id']] ?? 0); ?>
+            <?php $attachedTopics = $photoTopicsMap[(int)$p['id']] ?? []; ?>
             <tr>
               <td>
                 <?php if (!empty($p['before_file_id'])): ?>
@@ -776,6 +906,33 @@ function nextUniqueCodeName(string $base): string
                   <p><label class="small" for="descr-<?= (int)$p['id'] ?>">Описание фотографии</label><textarea id="descr-<?= (int)$p['id'] ?>" class="in" name="description" placeholder="Описание фотографии"><?= h((string)($p['description'] ?? '')) ?></textarea></p>
                   <div class="small js-save-status"></div>
                 </form>
+
+                <div class="topic-editor js-topic-editor" data-photo-id="<?= (int)$p['id'] ?>" data-endpoint="<?= h('admin.php?token=' . urlencode($tokenIncoming) . '&section_id=' . (int)$activeSectionId . '&mode=photos') ?>">
+                  <div class="small">Тематики</div>
+                  <div class="topic-list js-topic-list">
+                    <?php if ($attachedTopics === []): ?>
+                      <span class="topic-empty js-topic-empty">Не выбрано</span>
+                    <?php else: ?>
+                      <?php foreach($attachedTopics as $topic): ?>
+                        <span class="topic-chip" data-topic-id="<?= (int)$topic['id'] ?>">
+                          <?= h((string)$topic['full_name']) ?>
+                          <button class="js-topic-remove" type="button" data-topic-id="<?= (int)$topic['id'] ?>" aria-label="Убрать тематику">×</button>
+                        </span>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </div>
+
+                  <div class="topic-controls">
+                    <select class="in js-topic-select" <?= $topics === [] ? 'disabled' : '' ?>>
+                      <option value="">Выбери тематику</option>
+                      <?php foreach($topics as $topic): ?>
+                        <option value="<?= (int)$topic['id'] ?>"><?= (int)$topic['level'] === 1 ? '— ' : '' ?><?= h((string)$topic['full_name']) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                    <button class="btn btn-secondary btn-xs js-topic-add" type="button" <?= $topics === [] ? 'disabled' : '' ?>>Добавить</button>
+                  </div>
+                  <div class="topic-status js-topic-status"></div>
+                </div>
               </td>
               <td>
                 <div class="row-actions">
@@ -894,11 +1051,12 @@ function nextUniqueCodeName(string $base): string
       if (!status) return;
       status.textContent = text;
       status.style.color = isError ? '#b42318' : '#667085';
+      status.style.display = text ? 'block' : 'none';
     };
+    setStatus('');
 
     const mark = () => {
       dirty = true;
-      setStatus('Есть несохранённые изменения…');
     };
 
     form.querySelectorAll('input,textarea,select').forEach((el) => {
@@ -930,7 +1088,6 @@ function nextUniqueCodeName(string $base): string
     async function submitNow() {
       if (!dirty || busy) return;
       busy = true;
-      setStatus('Сохраняю…');
 
       try {
         if (ajaxInput) ajaxInput.value = '1';
@@ -1172,6 +1329,128 @@ function nextUniqueCodeName(string $base): string
         fileInput.value = '';
       }
     });
+  });
+
+  const setTopicStatus = (editor, text, isError = false) => {
+    const status = editor.querySelector('.js-topic-status');
+    if (!status) return;
+    status.textContent = text;
+    status.style.color = isError ? '#b42318' : '#667085';
+  };
+
+  const renderTopicChips = (editor, topics) => {
+    const list = editor.querySelector('.js-topic-list');
+    if (!list) {
+      return;
+    }
+
+    list.textContent = '';
+    if (!Array.isArray(topics) || topics.length === 0) {
+      const empty = document.createElement('span');
+      empty.className = 'topic-empty js-topic-empty';
+      empty.textContent = 'Не выбрано';
+      list.appendChild(empty);
+      return;
+    }
+
+    topics.forEach((topic) => {
+      const chip = document.createElement('span');
+      chip.className = 'topic-chip';
+      chip.dataset.topicId = String(topic.id || 0);
+
+      const label = document.createElement('span');
+      label.textContent = topic.full_name || '';
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'js-topic-remove';
+      removeBtn.dataset.topicId = String(topic.id || 0);
+      removeBtn.setAttribute('aria-label', 'Убрать тематику');
+      removeBtn.textContent = '×';
+
+      chip.append(label, removeBtn);
+      list.appendChild(chip);
+    });
+  };
+
+  const postTopicAction = async (editor, action, topicId) => {
+    const photoId = Number(editor.dataset.photoId || 0);
+    const endpoint = editor.dataset.endpoint || window.location.href;
+    if (photoId < 1 || topicId < 1) {
+      throw new Error('Некорректные параметры');
+    }
+
+    const addBtn = editor.querySelector('.js-topic-add');
+    const select = editor.querySelector('.js-topic-select');
+    if (addBtn) addBtn.disabled = true;
+    if (select) select.disabled = true;
+
+    const fd = new FormData();
+    fd.set('action', action);
+    fd.set('token', adminToken);
+    fd.set('photo_id', String(photoId));
+    fd.set('topic_id', String(topicId));
+    fd.set('ajax', '1');
+
+    try {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        body: fd,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+        },
+      });
+      const raw = await r.text();
+      let j = null;
+      try {
+        j = JSON.parse(raw);
+      } catch {
+        throw new Error(raw.slice(0, 180) || 'Некорректный ответ сервера');
+      }
+
+      if (!r.ok || !j.ok) {
+        throw new Error(j?.message || 'Ошибка сохранения тематик');
+      }
+
+      renderTopicChips(editor, j.topics || []);
+      setTopicStatus(editor, j.message || 'Сохранено');
+      if (select) {
+        select.value = '';
+      }
+    } finally {
+      if (addBtn) addBtn.disabled = false;
+      if (select) select.disabled = false;
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const addBtn = e.target.closest('.js-topic-add');
+    if (addBtn) {
+      const editor = addBtn.closest('.js-topic-editor');
+      if (!editor) return;
+      const select = editor.querySelector('.js-topic-select');
+      const topicId = Number(select?.value || 0);
+      if (topicId < 1) {
+        setTopicStatus(editor, 'Сначала выбери тематику', true);
+        return;
+      }
+
+      postTopicAction(editor, 'attach_photo_topic', topicId)
+        .catch((err) => setTopicStatus(editor, err?.message || 'Ошибка добавления', true));
+      return;
+    }
+
+    const removeBtn = e.target.closest('.js-topic-remove');
+    if (removeBtn) {
+      const editor = removeBtn.closest('.js-topic-editor');
+      if (!editor) return;
+      const topicId = Number(removeBtn.dataset.topicId || 0);
+      if (topicId < 1) return;
+
+      postTopicAction(editor, 'detach_photo_topic', topicId)
+        .catch((err) => setTopicStatus(editor, err?.message || 'Ошибка удаления', true));
+    }
   });
 
   const closeCommentsModal = () => {
