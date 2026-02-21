@@ -713,6 +713,7 @@ function nextUniqueCodeName(string $base): string
     .wrap{max-width:1180px;margin:0 auto;padding:24px}
     .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}
     .grid{display:grid;gap:12px;grid-template-columns:320px 1fr}
+    .admin-sidebar{position:sticky;top:14px;align-self:start;max-height:calc(100dvh - 28px);overflow:auto}
     .in{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px}
     .btn{border:0;background:#1f6feb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
     .btn-danger{background:#b42318}
@@ -762,7 +763,7 @@ function nextUniqueCodeName(string $base): string
     .comment-search{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto auto;gap:8px;align-items:center;margin-bottom:12px}
     .comment-search .btn{height:36px}
     @media (max-width:760px){.comment-search{grid-template-columns:1fr}}
-    @media (max-width:960px){.grid{grid-template-columns:1fr}}
+    @media (max-width:960px){.grid{grid-template-columns:1fr}.admin-sidebar{position:static;top:auto;max-height:none;overflow:visible}}
   </style>
 </head>
 <body><div class="wrap">
@@ -771,7 +772,7 @@ function nextUniqueCodeName(string $base): string
   <?php foreach($errors as $e): ?><div class="err"><?= h($e) ?></div><?php endforeach; ?>
 
   <div class="grid">
-    <aside>
+    <aside class="admin-sidebar">
       <section class="card">
         <h3>Меню</h3>
         <div class="sec">

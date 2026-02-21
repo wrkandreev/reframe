@@ -477,13 +477,13 @@ function outputWatermarked(string $path, string $mime): never
 
           <h3 style="margin-top:16px">Комментарии</h3>
           <?php if ($viewer): ?>
-            <form method="post" action="?photo_id=<?= (int)$photo['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">
+            <form class="js-comment-form" method="post" action="?photo_id=<?= (int)$photo['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">
               <input type="hidden" name="action" value="add_comment">
               <input type="hidden" name="photo_id" value="<?= (int)$photo['id'] ?>">
               <input type="hidden" name="section_id" value="<?= $isSectionMode ? (int)$detailSectionId : 0 ?>">
               <input type="hidden" name="topic_id" value="<?= $isTopicMode ? (int)$activeTopicId : 0 ?>">
               <input type="hidden" name="viewer" value="<?= h($viewerToken) ?>">
-              <textarea name="comment_text" required style="width:100%;min-height:80px;border:1px solid #d1d5db;border-radius:8px;padding:8px"></textarea>
+              <textarea class="js-comment-textarea" name="comment_text" required autofocus style="width:100%;min-height:80px;border:1px solid #d1d5db;border-radius:8px;padding:8px"></textarea>
               <p><button class="btn" type="submit">Отправить</button></p>
             </form>
           <?php else: ?>
@@ -498,8 +498,8 @@ function outputWatermarked(string $path, string $mime): never
             <div class="pager">
               <div class="muted">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
               <div class="pager-actions">
-                <a class="pager-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
-                <a class="pager-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
+                <a class="pager-link js-prev-photo<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
+                <a class="pager-link js-next-photo<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
               </div>
             </div>
           <?php endif; ?>
@@ -514,7 +514,7 @@ function outputWatermarked(string $path, string $mime): never
             <div class="cards">
               <?php foreach($photos as $p): ?>
                 <?php $cardCommentCount = (int)($photoCommentCounts[(int)$p['id']] ?? 0); ?>
-                <a class="card" href="?photo_id=<?= (int)$p['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$p['section_id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
+                <a class="card js-photo-card" href="?photo_id=<?= (int)$p['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$p['section_id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
                   <?php if (!empty($p['before_file_id'])): ?><div class="img-box thumb-img-box"><img src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt="" loading="lazy" decoding="async" fetchpriority="low"></div><?php endif; ?>
                   <div class="card-badges">
                     <?php if ($cardCommentCount > 0): ?><span class="card-badge comments" title="Комментариев: <?= $cardCommentCount ?>">💬 <?= $cardCommentCount ?></span><?php endif; ?>
@@ -539,8 +539,8 @@ function outputWatermarked(string $path, string $mime): never
     <button class="mobile-nav-link js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
     <a class="mobile-nav-link" href="?<?= $isTopicMode ? 'topic_id=' . $activeTopicId : 'section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= $isTopicMode ? 'К тематике' : 'К разделу' ?></a>
     <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
-    <a class="mobile-nav-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $prevPhotoId < 1 ? 'true' : 'false' ?>">←</a>
-    <a class="mobile-nav-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $nextPhotoId < 1 ? 'true' : 'false' ?>">→</a>
+    <a class="mobile-nav-link js-prev-photo<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $prevPhotoId < 1 ? 'true' : 'false' ?>">←</a>
+    <a class="mobile-nav-link js-next-photo<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $nextPhotoId < 1 ? 'true' : 'false' ?>">→</a>
   </nav>
 <?php elseif ($hasMobileCatalogNav): ?>
   <nav class="mobile-catalog-nav" aria-label="Навигация по каталогу">
@@ -679,6 +679,161 @@ function outputWatermarked(string $path, string $mime): never
       closeSidebar();
     }
   }, { passive: true });
+})();
+
+(() => {
+  const commentTextarea = document.querySelector('.js-comment-textarea');
+  const commentForm = commentTextarea ? commentTextarea.closest('.js-comment-form') : null;
+  if (commentTextarea) {
+    requestAnimationFrame(() => {
+      commentTextarea.focus();
+      commentTextarea.setSelectionRange(commentTextarea.value.length, commentTextarea.value.length);
+    });
+
+    commentTextarea.addEventListener('keydown', (e) => {
+      if (!e.shiftKey || e.key !== 'Enter' || e.isComposing) {
+        return;
+      }
+      if (!commentForm) {
+        return;
+      }
+      e.preventDefault();
+      if (typeof commentForm.requestSubmit === 'function') {
+        commentForm.requestSubmit();
+        return;
+      }
+      commentForm.submit();
+    });
+  }
+
+  const isEditableTarget = (target) => {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    return target.isContentEditable || !!target.closest('input, textarea, select, [contenteditable="true"]');
+  };
+
+  const enabledNavLink = (selector) => {
+    const links = Array.from(document.querySelectorAll(selector));
+    return links.find((link) => !link.classList.contains('disabled') && link.getAttribute('aria-disabled') !== 'true') || null;
+  };
+
+  const prevPhotoLink = enabledNavLink('.js-prev-photo');
+  const nextPhotoLink = enabledNavLink('.js-next-photo');
+  const photoCards = Array.from(document.querySelectorAll('.js-photo-card'));
+  const catalogLinks = Array.from(document.querySelectorAll('#sidebar .nav-link'));
+  let hoveredCardIndex = -1;
+
+  photoCards.forEach((card, index) => {
+    card.dataset.cardIndex = String(index);
+    card.addEventListener('mouseenter', () => {
+      hoveredCardIndex = index;
+    });
+    card.addEventListener('focus', () => {
+      hoveredCardIndex = index;
+    });
+  });
+
+  const navigatePhotoCards = (direction) => {
+    if (photoCards.length === 0) {
+      return false;
+    }
+
+    const focusedCard = document.activeElement instanceof HTMLElement
+      ? document.activeElement.closest('.js-photo-card')
+      : null;
+    let currentIndex = focusedCard ? Number(focusedCard.dataset.cardIndex || 0) : hoveredCardIndex;
+
+    if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= photoCards.length) {
+      currentIndex = direction > 0 ? -1 : photoCards.length;
+    }
+
+    const nextIndex = Math.max(0, Math.min(photoCards.length - 1, currentIndex + direction));
+    if (nextIndex === currentIndex) {
+      return false;
+    }
+
+    const targetCard = photoCards[nextIndex];
+    if (!targetCard || !targetCard.href) {
+      return false;
+    }
+    window.location.href = targetCard.href;
+    return true;
+  };
+
+  const navigateCatalog = (direction) => {
+    if (catalogLinks.length === 0) {
+      return false;
+    }
+
+    let currentIndex = catalogLinks.findIndex((link) => link.classList.contains('active'));
+    if (currentIndex < 0 && document.activeElement instanceof HTMLElement) {
+      const focusedLink = document.activeElement.closest('#sidebar .nav-link');
+      if (focusedLink) {
+        currentIndex = catalogLinks.indexOf(focusedLink);
+      }
+    }
+    if (currentIndex < 0) {
+      currentIndex = direction > 0 ? -1 : catalogLinks.length;
+    }
+
+    const nextIndex = Math.max(0, Math.min(catalogLinks.length - 1, currentIndex + direction));
+    const link = catalogLinks[nextIndex];
+    if (!link || !link.href) {
+      return false;
+    }
+    if (nextIndex === currentIndex) {
+      return true;
+    }
+    window.location.href = link.href;
+    return true;
+  };
+
+  document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.isComposing) {
+      return;
+    }
+
+    const target = e.target;
+    if (isEditableTarget(target)) {
+      return;
+    }
+
+    if ((e.shiftKey || e.ctrlKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const direction = e.key === 'ArrowDown' ? 1 : -1;
+      if (navigateCatalog(direction)) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) {
+      return;
+    }
+
+    if (e.key === 'ArrowLeft') {
+      if (prevPhotoLink && prevPhotoLink.href) {
+        e.preventDefault();
+        window.location.href = prevPhotoLink.href;
+        return;
+      }
+      if (navigatePhotoCards(-1)) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowRight') {
+      if (nextPhotoLink && nextPhotoLink.href) {
+        e.preventDefault();
+        window.location.href = nextPhotoLink.href;
+        return;
+      }
+      if (navigatePhotoCards(1)) {
+        e.preventDefault();
+      }
+    }
+  });
 })();
 </script>
 </body>
