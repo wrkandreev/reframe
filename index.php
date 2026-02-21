@@ -3,8 +3,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/db_gallery.php';
+require_once __DIR__ . '/lib/thumbs.php';
 
 $action = (string)($_GET['action'] ?? '');
+if ($action === 'thumb') {
+    serveThumb();
+}
 if ($action === 'image') {
     serveImage();
 }
@@ -269,6 +273,46 @@ function serveImage(): never
     }
 
     outputWatermarked($abs, (string)$f['mime_type']);
+}
+
+function serveThumb(): never
+{
+    $fileId = (int)($_GET['file_id'] ?? 0);
+    if ($fileId < 1) {
+        http_response_code(404);
+        exit;
+    }
+
+    $f = photoFileById($fileId);
+    if (!$f || (string)$f['kind'] !== 'before') {
+        http_response_code(404);
+        exit;
+    }
+
+    $thumbRel = ensureThumbForSource(__DIR__, (string)$f['file_path']);
+    if ($thumbRel === null) {
+        serveImage();
+    }
+
+    $thumbAbs = __DIR__ . '/' . ltrim($thumbRel, '/');
+    if (!is_file($thumbAbs)) {
+        serveImage();
+    }
+
+    $modifiedAt = (int)(filemtime($thumbAbs) ?: time());
+    $ifModifiedSince = (string)($_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? '');
+    if ($ifModifiedSince !== '' && strtotime($ifModifiedSince) >= $modifiedAt) {
+        http_response_code(304);
+        exit;
+    }
+
+    header('Content-Type: image/jpeg');
+    header('Content-Length: ' . (string)filesize($thumbAbs));
+    header('Cache-Control: private, max-age=86400');
+    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $modifiedAt) . ' GMT');
+    header('X-Robots-Tag: noindex, nofollow');
+    readfile($thumbAbs);
+    exit;
 }
 
 function outputWatermarked(string $path, string $mime): never
@@ -551,7 +595,7 @@ function outputWatermarked(string $path, string $mime): never
               <?php foreach($photos as $p): ?>
                 <?php $cardCommentCount = (int)($photoCommentCounts[(int)$p['id']] ?? 0); ?>
                 <a class="card js-photo-card" href="?photo_id=<?= (int)$p['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$p['section_id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
-                  <?php if (!empty($p['before_file_id'])): ?><div class="img-box thumb-img-box"><img src="?action=image&file_id=<?= (int)$p['before_file_id'] ?>" alt="" loading="lazy" decoding="async" fetchpriority="low"></div><?php endif; ?>
+                  <?php if (!empty($p['before_file_id'])): ?><div class="img-box thumb-img-box"><img src="?action=thumb&file_id=<?= (int)$p['before_file_id'] ?>" alt="" loading="lazy" decoding="async" fetchpriority="low"></div><?php endif; ?>
                   <div class="card-badges">
                     <?php if ($cardCommentCount > 0): ?><span class="card-badge comments" title="Комментариев: <?= $cardCommentCount ?>">💬 <?= $cardCommentCount ?></span><?php endif; ?>
                     <?php if (!empty($p['after_file_id'])): ?><span class="card-badge ai" title="Есть обработанная версия">AI</span><?php endif; ?>
