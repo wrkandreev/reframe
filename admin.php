@@ -19,6 +19,33 @@ if ($tokenExpected === '' || !hash_equals($tokenExpected, $tokenIncoming)) {
     exit('Forbidden');
 }
 
+$requestAction = (string)($_REQUEST['action'] ?? '');
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'photo_comments') {
+    $photoId = (int)($_GET['photo_id'] ?? 0);
+    if ($photoId < 1) {
+        http_response_code(400);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'message' => 'Некорректный photo_id'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $photo = photoById($photoId);
+    if (!$photo) {
+        http_response_code(404);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'message' => 'Фото не найдено'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'ok' => true,
+        'photo' => ['id' => (int)$photo['id'], 'code_name' => (string)$photo['code_name']],
+        'comments' => commentsByPhoto($photoId),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $message = '';
 $errors = [];
 
@@ -149,6 +176,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $st->execute(['pid' => $photoId, 'kind' => $kind]);
 
             $message = 'Изображение повернуто';
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'message' => $message, 'photo_id' => $photoId, 'kind' => $kind], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
         }
 
         if ($action === 'create_commenter') {
@@ -181,6 +213,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 commentDelete($id);
                 $message = 'Комментарий удалён';
+                if ($isAjax) {
+                    header('Content-Type: application/json; charset=utf-8');
+                    echo json_encode(['ok' => true, 'message' => $message], JSON_UNESCAPED_UNICODE);
+                    exit;
+                }
             }
         }
     } catch (Throwable $e) {
@@ -481,7 +518,38 @@ function nextUniqueCodeName(string $base): string
   <title>Админка</title>
   <link rel="icon" type="image/svg+xml" href="<?= h(assetUrl('favicon.svg')) ?>">
   <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
-  <style>.wrap{max-width:1180px;margin:0 auto;padding:24px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}.grid{display:grid;gap:12px;grid-template-columns:320px 1fr}.in{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px}.btn{border:0;background:#1f6feb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}.btn-danger{background:#b42318}.btn-secondary{background:#eaf1ff;color:#1f6feb}.btn-xs{padding:6px 8px;font-size:12px}.ok{background:#ecfdf3;padding:8px;border-radius:8px;margin-bottom:8px}.err{background:#fef2f2;padding:8px;border-radius:8px;margin-bottom:8px}.tbl{width:100%;border-collapse:collapse}.tbl td,.tbl th{padding:8px;border-bottom:1px solid #eee;vertical-align:top}.sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}.sec a.active{background:#eef4ff;color:#1f6feb}.small{font-size:12px;color:#667085}</style>
+  <style>
+    .wrap{max-width:1180px;margin:0 auto;padding:24px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}
+    .grid{display:grid;gap:12px;grid-template-columns:320px 1fr}
+    .in{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px}
+    .btn{border:0;background:#1f6feb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+    .btn-danger{background:#b42318}
+    .btn-secondary{background:#eaf1ff;color:#1f6feb}
+    .btn-xs{padding:6px 8px;font-size:12px;line-height:1}
+    .ok{background:#ecfdf3;padding:8px;border-radius:8px;margin-bottom:8px}
+    .err{background:#fef2f2;padding:8px;border-radius:8px;margin-bottom:8px}
+    .tbl{width:100%;border-collapse:collapse}
+    .tbl td,.tbl th{padding:8px;border-bottom:1px solid #eee;vertical-align:top}
+    .sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}
+    .sec a.active{background:#eef4ff;color:#1f6feb}
+    .small{font-size:12px;color:#667085}
+    .inline-form{margin:0}
+    .preview-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:nowrap}
+    .preview-actions form{margin:0}
+    .row-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+    .modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px}
+    .modal[hidden]{display:none}
+    .modal-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.44)}
+    .modal-card{position:relative;z-index:1;max-width:760px;width:min(100%,760px);max-height:80dvh;overflow:auto;background:#fff;border:1px solid #dbe3ef;border-radius:12px;padding:14px;box-shadow:0 24px 48px rgba(15,23,42,.22)}
+    .modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .modal-close{border:0;background:#eef2ff;color:#1f6feb;width:32px;height:32px;border-radius:8px;font-size:22px;line-height:1;cursor:pointer}
+    .comment-row{padding:10px 0;border-top:1px solid #eef2f7}
+    .comment-row:first-child{border-top:0;padding-top:0}
+    .comment-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+    .comment-row-body{white-space:pre-wrap}
+    @media (max-width:960px){.grid{grid-template-columns:1fr}}
+  </style>
 </head>
 <body><div class="wrap">
   <h1>Админка</h1>
@@ -596,13 +664,13 @@ function nextUniqueCodeName(string $base): string
             <tr>
               <td>
                 <?php if (!empty($p['before_file_id'])): ?>
-                  <img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                  <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="before" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
+                  <div class="preview-actions">
+                    <form class="inline-form js-rotate-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                       <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="before"><input type="hidden" name="direction" value="left">
                       <button class="btn btn-secondary btn-xs" type="submit">↺ 90°</button>
                     </form>
-                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                    <form class="inline-form js-rotate-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                       <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="before"><input type="hidden" name="direction" value="right">
                       <button class="btn btn-secondary btn-xs" type="submit">↻ 90°</button>
                     </form>
@@ -611,13 +679,13 @@ function nextUniqueCodeName(string $base): string
               </td>
               <td>
                 <?php if (!empty($p['after_file_id'])): ?>
-                  <img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                  <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="after" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
+                  <div class="preview-actions">
+                    <form class="inline-form js-rotate-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                       <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="after"><input type="hidden" name="direction" value="left">
                       <button class="btn btn-secondary btn-xs" type="submit">↺ 90°</button>
                     </form>
-                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                    <form class="inline-form js-rotate-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                       <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="after"><input type="hidden" name="direction" value="right">
                       <button class="btn btn-secondary btn-xs" type="submit">↻ 90°</button>
                     </form>
@@ -635,15 +703,19 @@ function nextUniqueCodeName(string $base): string
                 </form>
               </td>
               <td>
-                <?php if ($photoCommentCount > 0): ?>
-                  <p><a class="btn btn-secondary btn-xs" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments&comment_photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$activeSectionId ?>">Комментарии (<?= $photoCommentCount ?>)</a></p>
-                <?php else: ?>
-                  <p class="small">Комментариев нет</p>
-                <?php endif; ?>
-                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos" onsubmit="return confirm('Удалить фото?')">
-                  <input type="hidden" name="action" value="photo_delete"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
-                  <button class="btn btn-danger" type="submit">Удалить</button>
-                </form>
+                <div class="row-actions">
+                  <div class="js-comment-indicator" data-photo-id="<?= (int)$p['id'] ?>" data-photo-name="<?= h((string)$p['code_name']) ?>">
+                    <?php if ($photoCommentCount > 0): ?>
+                      <button class="btn btn-secondary btn-xs js-open-comments" type="button" data-photo-id="<?= (int)$p['id'] ?>" data-photo-name="<?= h((string)$p['code_name']) ?>" data-comment-count="<?= $photoCommentCount ?>">Комментарии (<?= $photoCommentCount ?>)</button>
+                    <?php else: ?>
+                      <span class="small">Комментариев нет</span>
+                    <?php endif; ?>
+                  </div>
+                  <form class="inline-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos" onsubmit="return confirm('Удалить фото?')">
+                    <input type="hidden" name="action" value="photo_delete"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
+                    <button class="btn btn-danger" type="submit">Удалить</button>
+                  </form>
+                </div>
               </td>
             </tr>
           <?php endforeach; ?>
@@ -727,6 +799,16 @@ function nextUniqueCodeName(string $base): string
     <button class="lightbox-close js-close" type="button" aria-label="Закрыть">×</button>
     <img id="lightboxImage" src="" alt="">
   </div>
+</div>
+<div class="modal" id="commentsModal" hidden>
+  <button class="modal-backdrop js-comments-close" type="button" aria-label="Закрыть окно комментариев"></button>
+  <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="commentsModalTitle">
+    <div class="modal-head">
+      <h3 id="commentsModalTitle" style="margin:0">Комментарии</h3>
+      <button class="modal-close js-comments-close" type="button" aria-label="Закрыть окно комментариев">×</button>
+    </div>
+    <div id="commentsModalBody" class="small">Загрузка...</div>
+  </section>
 </div>
 <script>
 (() => {
@@ -828,6 +910,251 @@ function nextUniqueCodeName(string $base): string
 
     return confirm('Будут удалены все фото в разделе (и версии "до", и версии "после"). Продолжить?');
   };
+
+  const adminToken = <?= json_encode($tokenIncoming, JSON_UNESCAPED_UNICODE) ?>;
+  const commentsModal = document.getElementById('commentsModal');
+  const commentsModalTitle = document.getElementById('commentsModalTitle');
+  const commentsModalBody = document.getElementById('commentsModalBody');
+  let activePhotoId = 0;
+  let activePhotoName = '';
+  let activeCommentCount = 0;
+
+  const withFreshVersion = (url) => {
+    const u = new URL(url, window.location.href);
+    u.searchParams.set('v', String(Date.now()));
+    return `${u.pathname}${u.search}`;
+  };
+
+  const refreshPreviewImages = (photoId, kind) => {
+    document.querySelectorAll(`.js-preview-image[data-photo-id="${photoId}"][data-kind="${kind}"]`).forEach((imgEl) => {
+      const src = imgEl.getAttribute('src');
+      const full = imgEl.getAttribute('data-full');
+      if (src) {
+        imgEl.setAttribute('src', withFreshVersion(src));
+      }
+      if (full) {
+        imgEl.setAttribute('data-full', withFreshVersion(full));
+      }
+    });
+  };
+
+  document.querySelectorAll('.js-rotate-form').forEach((form) => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (form.dataset.busy === '1') {
+        return;
+      }
+
+      const group = form.closest('.preview-actions');
+      const buttons = group ? group.querySelectorAll('button') : form.querySelectorAll('button');
+      form.dataset.busy = '1';
+      buttons.forEach((btn) => {
+        btn.disabled = true;
+      });
+
+      const fd = new FormData(form);
+      fd.set('ajax', '1');
+      try {
+        const endpoint = form.getAttribute('action') || window.location.href;
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          body: fd,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+          },
+        });
+
+        const raw = await r.text();
+        let j = null;
+        try {
+          j = JSON.parse(raw);
+        } catch {
+          throw new Error(raw.slice(0, 180) || 'Некорректный ответ сервера');
+        }
+
+        if (!r.ok || !j.ok) {
+          throw new Error(j?.message || 'Ошибка поворота');
+        }
+
+        const photoId = Number(fd.get('photo_id') || 0);
+        const kind = String(fd.get('kind') || '');
+        if (photoId > 0 && (kind === 'before' || kind === 'after')) {
+          refreshPreviewImages(photoId, kind);
+        }
+      } catch (err) {
+        alert('Не удалось повернуть фото: ' + (err?.message || 'unknown'));
+      } finally {
+        form.dataset.busy = '0';
+        buttons.forEach((btn) => {
+          btn.disabled = false;
+        });
+      }
+    });
+  });
+
+  const closeCommentsModal = () => {
+    if (!commentsModal) return;
+    commentsModal.hidden = true;
+    document.body.style.overflow = '';
+  };
+
+  const renderCommentIndicator = (photoId, photoName, count) => {
+    document.querySelectorAll(`.js-comment-indicator[data-photo-id="${photoId}"]`).forEach((wrap) => {
+      wrap.textContent = '';
+      if (count > 0) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-secondary btn-xs js-open-comments';
+        btn.dataset.photoId = String(photoId);
+        btn.dataset.photoName = photoName;
+        btn.dataset.commentCount = String(count);
+        btn.textContent = `Комментарии (${count})`;
+        wrap.appendChild(btn);
+      } else {
+        const span = document.createElement('span');
+        span.className = 'small';
+        span.textContent = 'Комментариев нет';
+        wrap.appendChild(span);
+      }
+    });
+  };
+
+  const renderCommentsList = (comments) => {
+    if (!commentsModalBody) return;
+    commentsModalBody.textContent = '';
+
+    if (!Array.isArray(comments) || comments.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'small';
+      empty.textContent = 'К этой карточке комментариев пока нет.';
+      commentsModalBody.appendChild(empty);
+      return;
+    }
+
+    comments.forEach((item) => {
+      const row = document.createElement('article');
+      row.className = 'comment-row';
+      row.dataset.commentId = String(item.id || 0);
+
+      const head = document.createElement('div');
+      head.className = 'comment-row-head';
+
+      const meta = document.createElement('div');
+      meta.className = 'small';
+      const displayName = item.display_name || '—';
+      const createdAt = item.created_at || '';
+      meta.textContent = `${displayName}${createdAt ? ' · ' + createdAt : ''}`;
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-danger btn-xs js-delete-comment';
+      del.dataset.commentId = String(item.id || 0);
+      del.textContent = 'Удалить';
+
+      head.append(meta, del);
+
+      const body = document.createElement('div');
+      body.className = 'comment-row-body';
+      body.textContent = item.comment_text || '';
+
+      row.append(head, body);
+      commentsModalBody.appendChild(row);
+    });
+  };
+
+  const openCommentsModal = async (photoId, photoName, count) => {
+    if (!commentsModal || !commentsModalBody || !commentsModalTitle) return;
+
+    activePhotoId = photoId;
+    activePhotoName = photoName;
+    activeCommentCount = Number.isFinite(count) ? count : 0;
+    commentsModalTitle.textContent = `Комментарии к фото: ${photoName}`;
+    commentsModalBody.textContent = 'Загрузка...';
+    commentsModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+
+    try {
+      const endpoint = `${window.location.pathname}?token=${encodeURIComponent(adminToken)}&action=photo_comments&photo_id=${photoId}`;
+      const r = await fetch(endpoint, { headers: { 'Accept': 'application/json' } });
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        throw new Error(j?.message || 'Не удалось загрузить комментарии');
+      }
+      renderCommentsList(j.comments || []);
+    } catch (e) {
+      commentsModalBody.textContent = `Ошибка загрузки: ${e?.message || 'unknown'}`;
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const openBtn = e.target.closest('.js-open-comments');
+    if (openBtn) {
+      const photoId = Number(openBtn.dataset.photoId || 0);
+      if (photoId > 0) {
+        openCommentsModal(photoId, openBtn.dataset.photoName || '', Number(openBtn.dataset.commentCount || 0));
+      }
+      return;
+    }
+
+    if (e.target.closest('.js-comments-close')) {
+      closeCommentsModal();
+      return;
+    }
+
+    const delBtn = e.target.closest('.js-delete-comment');
+    if (!delBtn) {
+      return;
+    }
+
+    const commentId = Number(delBtn.dataset.commentId || 0);
+    if (commentId < 1) {
+      return;
+    }
+
+    if (!confirm('Удалить комментарий?')) {
+      return;
+    }
+
+    const fd = new FormData();
+    fd.set('action', 'delete_comment');
+    fd.set('token', adminToken);
+    fd.set('id', String(commentId));
+    fd.set('ajax', '1');
+
+    fetch(`${window.location.pathname}?token=${encodeURIComponent(adminToken)}&mode=comments`, {
+      method: 'POST',
+      body: fd,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/json',
+      },
+    }).then(async (r) => {
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        throw new Error(j?.message || 'Ошибка удаления');
+      }
+
+      const row = delBtn.closest('.comment-row');
+      if (row) {
+        row.remove();
+      }
+      activeCommentCount = Math.max(0, activeCommentCount - 1);
+      renderCommentIndicator(activePhotoId, activePhotoName, activeCommentCount);
+
+      if (commentsModalBody && commentsModalBody.querySelectorAll('.comment-row').length === 0) {
+        renderCommentsList([]);
+      }
+    }).catch((err) => {
+      alert('Не удалось удалить комментарий: ' + (err?.message || 'unknown'));
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && commentsModal && !commentsModal.hidden) {
+      closeCommentsModal();
+    }
+  });
 
   const lightbox = document.getElementById('lightbox');
   const img = document.getElementById('lightboxImage');
