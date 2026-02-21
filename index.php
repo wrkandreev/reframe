@@ -691,7 +691,7 @@ function outputWatermarked(string $path, string $mime): never
 
           <h3 class="detail-comments-title">Комментарии</h3>
           <?php if ($viewer): ?>
-            <form class="js-comment-form comment-form" method="post" action="?photo_id=<?= (int)$photo['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">
+            <form class="js-comment-form comment-form" method="post" action="index.php?photo_id=<?= (int)$photo['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">
               <input type="hidden" name="action" value="add_comment">
               <input type="hidden" name="photo_id" value="<?= (int)$photo['id'] ?>">
               <input type="hidden" name="section_id" value="<?= $isSectionMode ? (int)$detailSectionId : 0 ?>">
