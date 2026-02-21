@@ -119,13 +119,6 @@ function topicUpdate(int $topicId, string $name, ?int $parentId, int $sortOrder 
     $st->execute();
 }
 
-function topicChildrenCount(int $topicId): int
-{
-    $st = db()->prepare('SELECT COUNT(*) FROM topics WHERE parent_id=:id');
-    $st->execute(['id' => $topicId]);
-    return (int)$st->fetchColumn();
-}
-
 function topicDelete(int $topicId): void
 {
     $st = db()->prepare('DELETE FROM topics WHERE id=:id');

@@ -102,7 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $topicId = (int)($_POST['topic_id'] ?? 0);
             $name = trim((string)($_POST['name'] ?? ''));
             $sort = (int)($_POST['sort_order'] ?? 1000);
-            $parentId = (int)($_POST['parent_id'] ?? 0);
 
             if ($topicId < 1) throw new RuntimeException('Некорректная тематика');
             if ($name === '') throw new RuntimeException('Название тематики пустое');
@@ -110,22 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $topic = topicById($topicId);
             if (!$topic) throw new RuntimeException('Тематика не найдена');
 
-            if ($parentId === $topicId) {
-                throw new RuntimeException('Тематика не может быть родителем самой себя');
-            }
-
-            if ($parentId > 0) {
-                $parent = topicById($parentId);
-                if (!$parent) throw new RuntimeException('Родительская тематика не найдена');
-                if (!empty($parent['parent_id'])) {
-                    throw new RuntimeException('Разрешено только 2 уровня вложенности тематик');
-                }
-                if (topicChildrenCount($topicId) > 0) {
-                    throw new RuntimeException('Тематика с дочерними элементами должна оставаться в верхнем уровне');
-                }
-            }
-
-            topicUpdate($topicId, $name, $parentId > 0 ? $parentId : null, $sort);
+            $currentParentId = isset($topic['parent_id']) && $topic['parent_id'] !== null ? (int)$topic['parent_id'] : null;
+            topicUpdate($topicId, $name, $currentParentId, $sort);
             $message = 'Тематика обновлена';
         }
 
@@ -391,6 +376,7 @@ $photoCommentCounts = commentCountsByPhotoIds(array_map(static fn(array $p): int
 $topics = [];
 $topicRoots = [];
 $photoTopicsMap = [];
+$topicTree = [];
 $topicsError = '';
 try {
     $topics = topicsAllForSelect();
@@ -399,6 +385,7 @@ try {
             $topicRoots[] = $topic;
         }
     }
+    $topicTree = buildTopicTree($topics);
     $photoTopicsMap = photoTopicsMapByPhotoIds(array_map(static fn(array $p): int => (int)$p['id'], $photos));
 } catch (Throwable $e) {
     $topicsError = 'Тематики недоступны. Запусти миграции: php scripts/migrate.php';
@@ -453,6 +440,32 @@ function commentsSearch(string $photoQuery, string $userQuery, int $limit = 200)
     $st = db()->prepare($sql);
     $st->execute($params);
     return $st->fetchAll();
+}
+
+function buildTopicTree(array $topics): array
+{
+    $roots = [];
+    $children = [];
+
+    foreach ($topics as $topic) {
+        $pid = isset($topic['parent_id']) && $topic['parent_id'] !== null ? (int)$topic['parent_id'] : 0;
+        if ($pid === 0) {
+            $roots[] = $topic;
+            continue;
+        }
+        if (!isset($children[$pid])) {
+            $children[$pid] = [];
+        }
+        $children[$pid][] = $topic;
+    }
+
+    foreach ($roots as &$root) {
+        $rootId = (int)$root['id'];
+        $root['children'] = $children[$rootId] ?? [];
+    }
+    unset($root);
+
+    return $roots;
 }
 
 function saveBulkBefore(array $files, int $sectionId): array
@@ -720,6 +733,14 @@ function nextUniqueCodeName(string $base): string
     .topic-chip button{border:0;background:transparent;color:#a11b1b;cursor:pointer;font-size:14px;line-height:1;padding:0}
     .topic-empty{font-size:12px;color:#667085}
     .topic-status{font-size:12px;min-height:16px;color:#667085}
+    .topic-tree{display:grid;gap:10px}
+    .topic-node{border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#fff}
+    .topic-node.level-2{margin-left:20px;border-color:#edf2fb;background:#fbfdff}
+    .topic-node-head{font-size:12px;color:#667085;margin:0 0 8px}
+    .topic-row{display:grid;grid-template-columns:minmax(180px,1fr) 110px auto;gap:8px;align-items:center}
+    .topic-row .btn{height:36px}
+    .topic-children{display:grid;gap:8px;margin-top:8px}
+    @media (max-width:900px){.topic-row{grid-template-columns:1fr 110px}.topic-row .btn{width:100%}}
     .row-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
     .modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px}
     .modal[hidden]{display:none}
@@ -858,37 +879,43 @@ function nextUniqueCodeName(string $base): string
         <?php elseif ($topics === []): ?>
           <p class="small">Тематик пока нет.</p>
         <?php else: ?>
-          <table class="tbl">
-            <tr><th>Тематика</th><th>Уровень</th><th>Действия</th></tr>
-            <?php foreach($topics as $topic): ?>
-              <tr>
-                <td>
-                  <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" style="display:grid;gap:8px;min-width:320px">
-                    <input type="hidden" name="action" value="update_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$topic['id'] ?>">
-                    <input class="in" type="text" name="name" value="<?= h((string)$topic['name']) ?>" required>
-                    <div style="display:grid;grid-template-columns:1fr 110px;gap:8px">
-                      <select class="in" name="parent_id">
-                        <option value="0" <?= empty($topic['parent_id']) ? 'selected' : '' ?>>Без родителя</option>
-                        <?php foreach($topicRoots as $root): ?>
-                          <?php if ((int)$root['id'] === (int)$topic['id']) continue; ?>
-                          <option value="<?= (int)$root['id'] ?>" <?= (int)$topic['parent_id'] === (int)$root['id'] ? 'selected' : '' ?>>Внутри: <?= h((string)$root['name']) ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                      <input class="in" type="number" name="sort_order" value="<?= (int)$topic['sort_order'] ?>">
-                    </div>
-                    <button class="btn btn-secondary" type="submit">Сохранить</button>
-                  </form>
-                </td>
-                <td><?= (int)$topic['level'] === 0 ? '1' : '2' ?></td>
-                <td>
-                  <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" onsubmit="return confirm('Удалить тематику? Дочерние тематики и привязки к фото тоже удалятся.')">
-                    <input type="hidden" name="action" value="delete_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$topic['id'] ?>">
-                    <button class="btn btn-danger" type="submit">Удалить</button>
-                  </form>
-                </td>
-              </tr>
+          <div class="topic-tree">
+            <?php foreach($topicTree as $root): ?>
+              <div class="topic-node level-1">
+                <p class="topic-node-head">Уровень 1</p>
+                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" class="topic-row">
+                  <input type="hidden" name="action" value="update_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$root['id'] ?>">
+                  <input class="in" type="text" name="name" value="<?= h((string)$root['name']) ?>" required>
+                  <input class="in" type="number" name="sort_order" value="<?= (int)$root['sort_order'] ?>">
+                  <button class="btn btn-secondary" type="submit">Сохранить</button>
+                </form>
+                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" style="margin-top:8px">
+                  <input type="hidden" name="action" value="delete_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$root['id'] ?>">
+                  <button class="btn btn-danger" type="submit" onclick="return confirm('Удалить тематику? Дочерние тематики и привязки к фото тоже удалятся.')">Удалить</button>
+                </form>
+
+                <?php if (!empty($root['children'])): ?>
+                  <div class="topic-children">
+                    <?php foreach($root['children'] as $child): ?>
+                      <div class="topic-node level-2">
+                        <p class="topic-node-head">Уровень 2 · внутри «<?= h((string)$root['name']) ?>»</p>
+                        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" class="topic-row">
+                          <input type="hidden" name="action" value="update_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$child['id'] ?>">
+                          <input class="in" type="text" name="name" value="<?= h((string)$child['name']) ?>" required>
+                          <input class="in" type="number" name="sort_order" value="<?= (int)$child['sort_order'] ?>">
+                          <button class="btn btn-secondary" type="submit">Сохранить</button>
+                        </form>
+                        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=topics" style="margin-top:8px">
+                          <input type="hidden" name="action" value="delete_topic"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="topic_id" value="<?= (int)$child['id'] ?>">
+                          <button class="btn btn-danger" type="submit" onclick="return confirm('Удалить тематику?')">Удалить</button>
+                        </form>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                <?php endif; ?>
+              </div>
             <?php endforeach; ?>
-          </table>
+          </div>
         <?php endif; ?>
       </section>
       <?php endif; ?>
