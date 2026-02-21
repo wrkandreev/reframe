@@ -48,10 +48,15 @@ if ($tokenExpected === '' || !hash_equals($tokenExpected, $tokenIncoming)) {
 }
 
 $deployConfig = (array)($config['deploy'] ?? []);
-$deployBranch = trim((string)($deployConfig['branch'] ?? 'main'));
-if ($deployBranch === '') {
-    $deployBranch = 'main';
+$allowedDeployBranches = ['main', 'dev'];
+$defaultDeployBranch = trim((string)($deployConfig['branch'] ?? 'main'));
+if (!in_array($defaultDeployBranch, $allowedDeployBranches, true)) {
+    $defaultDeployBranch = 'main';
 }
+$requestedDeployBranch = trim((string)($_REQUEST['deploy_branch'] ?? ''));
+$deployBranch = in_array($requestedDeployBranch, $allowedDeployBranches, true)
+    ? $requestedDeployBranch
+    : $defaultDeployBranch;
 $deployScript = trim((string)($deployConfig['script'] ?? (__DIR__ . '/scripts/deploy.sh')));
 if ($deployScript !== '' && !str_starts_with($deployScript, '/')) {
     $deployScript = __DIR__ . '/' . ltrim($deployScript, '/');
@@ -167,6 +172,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
     .sec a.active{background:#eef4ff;color:#1f6feb}
     .small{font-size:12px;color:#667085}
     .deploy-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .deploy-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .deploy-output{margin-top:10px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;font-size:12px;white-space:pre-wrap;line-height:1.4;max-height:220px;overflow:auto}
     .inline-form{margin:0}
     .after-slot{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
@@ -279,10 +285,11 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
 
         <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
         <h4 style="margin:0 0 8px">Обновление проекта</h4>
-        <p class="small" style="margin:0">Ветка: <strong><?= h($deployBranch) ?></strong></p>
+        <p class="small" style="margin:0">Выбери ветку для проверки и обновления: <strong><?= h($deployBranch) ?></strong></p>
 
         <?php if (is_array($deployStatus)): ?>
           <?php $deployState = (string)($deployStatus['state'] ?? ''); ?>
+          <?php $statusBranch = (string)($deployStatus['branch'] ?? $deployBranch); ?>
           <?php $deployStateMessage = $deployState === 'update_available'
               ? 'Доступна новая версия.'
               : ($deployState === 'up_to_date'
@@ -292,19 +299,24 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
                       : 'Ветка расходится с origin. Нужна ручная синхронизация.')); ?>
           <div class="<?= in_array($deployState, ['local_ahead', 'diverged'], true) ? 'err' : 'ok' ?>" style="margin-top:8px">
             <?= h($deployStateMessage) ?><br>
-            <span class="small">Локально: <?= h((string)($deployStatus['local_ref'] ?? '-')) ?> · origin/<?= h($deployBranch) ?>: <?= h((string)($deployStatus['remote_ref'] ?? '-')) ?> · behind: <?= (int)($deployStatus['behind'] ?? 0) ?> · ahead: <?= (int)($deployStatus['ahead'] ?? 0) ?></span>
+            <span class="small">Локально: <?= h((string)($deployStatus['local_ref'] ?? '-')) ?> · origin/<?= h($statusBranch) ?>: <?= h((string)($deployStatus['remote_ref'] ?? '-')) ?> · behind: <?= (int)($deployStatus['behind'] ?? 0) ?> · ahead: <?= (int)($deployStatus['ahead'] ?? 0) ?></span>
           </div>
         <?php endif; ?>
 
         <div class="deploy-actions">
-          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">
+          <form class="deploy-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">
             <input type="hidden" name="action" value="check_updates"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+            <select class="in" name="deploy_branch" style="width:auto;min-width:120px">
+              <?php foreach ($allowedDeployBranches as $branchOption): ?>
+                <option value="<?= h($branchOption) ?>"<?= $branchOption === $deployBranch ? ' selected' : '' ?>><?= h($branchOption) ?></option>
+              <?php endforeach; ?>
+            </select>
             <button class="btn btn-secondary" type="submit">Проверить обновления</button>
           </form>
 
           <?php if (is_array($deployStatus) && !empty($deployStatus['can_deploy'])): ?>
             <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome" onsubmit="return confirm('Обновить код из origin/<?= h($deployBranch) ?> и запустить миграции?')">
-              <input type="hidden" name="action" value="deploy_updates"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+              <input type="hidden" name="action" value="deploy_updates"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="deploy_branch" value="<?= h($deployBranch) ?>">
               <button class="btn" type="submit">Обновить проект</button>
             </form>
           <?php endif; ?>
