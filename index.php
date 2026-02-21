@@ -46,6 +46,14 @@ $activePhotoId = (int)($_GET['photo_id'] ?? 0);
 $activeTopicId = (int)($_GET['topic_id'] ?? 0);
 $welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
 
+$hasVisibleSections = false;
+foreach ($sections as $s) {
+    if ((int)($s['photos_count'] ?? 0) > 0) {
+        $hasVisibleSections = true;
+        break;
+    }
+}
+
 $photo = $activePhotoId > 0 ? photoById($activePhotoId) : null;
 if ($photo && $activeSectionId < 1) {
     $activeSectionId = (int)$photo['section_id'];
@@ -56,6 +64,7 @@ $comments = $photo ? commentsByPhoto($activePhotoId) : [];
 $topics = [];
 $topicCounts = [];
 $topicTree = [];
+$hasVisibleTopics = false;
 try {
     $topics = topicsAllForSelect();
     if ($activeTopicId > 0) {
@@ -66,12 +75,19 @@ try {
     }
     $topicCounts = topicPhotoCounts(null);
     $topicTree = buildTopicTreePublic($topics);
+    foreach ($topics as $topicItem) {
+        if ((int)($topicCounts[(int)$topicItem['id']] ?? 0) > 0) {
+            $hasVisibleTopics = true;
+            break;
+        }
+    }
 } catch (Throwable) {
     $topics = [];
     $topicCounts = [];
     $topicTree = [];
     $activeTopicId = 0;
     $filterMode = $activeSectionId > 0 ? 'section' : 'none';
+    $hasVisibleTopics = false;
 }
 
 $photos = ($activeSectionId > 0 || $activeTopicId > 0)
@@ -88,9 +104,11 @@ foreach ($sections as $s) {
 }
 
 $activeTopicName = '';
+$activeTopicShortName = '';
 foreach ($topics as $t) {
     if ((int)$t['id'] === $activeTopicId) {
         $activeTopicName = (string)$t['full_name'];
+        $activeTopicShortName = (string)$t['name'];
         break;
     }
 }
@@ -146,8 +164,9 @@ if ($photo) {
 }
 
 $hasMobilePhotoNav = $activePhotoId > 0 && $photo && $detailTotal > 0;
+$hasMobileCatalogNav = !$photo && ($isTopicMode || $isSectionMode);
 $bodyClasses = [$isHomePage ? 'is-home' : 'is-inner'];
-if ($hasMobilePhotoNav) {
+if ($hasMobilePhotoNav || $hasMobileCatalogNav) {
     $bodyClasses[] = 'has-mobile-nav';
 }
 
@@ -156,6 +175,22 @@ if ($activeTopicId > 0 && $activeTopicName !== '') {
     $detailLocationLabel = 'в тематике «' . $activeTopicName . '»';
 } elseif ($detailSectionId > 0 && isset($sectionNames[$detailSectionId])) {
     $detailLocationLabel = 'в разделе «' . $sectionNames[$detailSectionId] . '»';
+}
+
+$pageHeading = '';
+if ($isTopicMode && $activeTopicShortName !== '') {
+    $pageHeading = $activeTopicShortName;
+} elseif ($isSectionMode && isset($sectionNames[$activeSectionId])) {
+    $pageHeading = $sectionNames[$activeSectionId];
+} elseif ($photo && isset($sectionNames[$detailSectionId])) {
+    $pageHeading = $sectionNames[$detailSectionId];
+}
+
+$catalogLocationLabel = '';
+if ($isTopicMode && $activeTopicName !== '') {
+    $catalogLocationLabel = 'Тема: ' . $activeTopicName;
+} elseif ($isSectionMode && isset($sectionNames[$activeSectionId])) {
+    $catalogLocationLabel = 'Раздел: ' . $sectionNames[$activeSectionId];
 }
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
@@ -291,6 +326,8 @@ function outputWatermarked(string $path, string $mime): never
   <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
   <style>
     .note{color:#6b7280;font-size:13px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .topbar h1{margin:0;font-size:24px;line-height:1.2}
     .page{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr)}
     .panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}
     .sidebar{position:sticky;top:14px;align-self:start;max-height:calc(100dvh - 28px);overflow:auto}
@@ -322,7 +359,7 @@ function outputWatermarked(string $path, string $mime): never
     .pager-actions{display:flex;gap:8px;flex-wrap:wrap}
     .pager-link{display:inline-flex;align-items:center;justify-content:center;padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#111;text-decoration:none;font-size:14px}
     .pager-link.disabled{opacity:.45;pointer-events:none}
-    .mobile-photo-nav{display:none}
+    .mobile-photo-nav,.mobile-catalog-nav{display:none}
     .mobile-nav-link{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid #d1d5db;background:#fff;color:#111;border-radius:10px;padding:9px 10px;text-decoration:none;font-size:14px}
     .mobile-nav-link.disabled{opacity:.45;pointer-events:none}
     .mobile-nav-meta{font-size:13px;color:#4b5563;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -339,13 +376,15 @@ function outputWatermarked(string $path, string $mime): never
     .sidebar-backdrop{display:none}
 
     @media (max-width:900px){
-      .topbar{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+      .topbar h1{font-size:22px}
       .page{grid-template-columns:1fr}
       .sidebar{position:static;max-height:none}
       .pager{display:none}
 
       .has-mobile-nav .app{padding-bottom:84px}
-      .mobile-photo-nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);backdrop-filter:blur(6px);border-top:1px solid #e5e7eb}
+      .mobile-photo-nav,.mobile-catalog-nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);backdrop-filter:blur(6px);border-top:1px solid #e5e7eb}
+      .mobile-photo-nav{grid-template-columns:auto auto 1fr auto auto}
+      .mobile-catalog-nav{grid-template-columns:auto 1fr}
       .mobile-nav-link{padding:8px 10px;font-size:13px}
 
       .is-inner .sidebar-toggle{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
@@ -363,9 +402,9 @@ function outputWatermarked(string $path, string $mime): never
 </head>
 <body class="<?= h(implode(' ', $bodyClasses)) ?>">
 <div class="app">
-  <?php if (!$isHomePage): ?>
+  <?php if (!$isHomePage && $pageHeading !== ''): ?>
     <header class="topbar">
-      <button class="sidebar-toggle js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
+      <h1><?= h($pageHeading) ?></h1>
     </header>
   <?php endif; ?>
   <?php if (!$isHomePage): ?>
@@ -379,25 +418,38 @@ function outputWatermarked(string $path, string $mime): never
         </div>
       <?php endif; ?>
 
-      <details class="nav-group" open>
-        <summary class="nav-summary">Разделы</summary>
-        <div class="nav-list">
-          <?php foreach($sections as $s): ?>
-            <a class="nav-link<?= $isSectionMode && (int)$s['id']===$activeSectionId ? ' active' : '' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
-          <?php endforeach; ?>
-        </div>
-      </details>
+      <?php if ($hasVisibleSections): ?>
+        <details class="nav-group" open>
+          <summary class="nav-summary">Разделы</summary>
+          <div class="nav-list">
+            <?php foreach($sections as $s): ?>
+              <?php if ((int)($s['photos_count'] ?? 0) < 1) continue; ?>
+              <a class="nav-link<?= $isSectionMode && (int)$s['id']===$activeSectionId ? ' active' : '' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
+            <?php endforeach; ?>
+          </div>
+        </details>
+      <?php endif; ?>
 
-      <?php if ($topicTree !== []): ?>
-        <details class="nav-group"<?= $activeTopicId > 0 ? ' open' : '' ?>>
+      <?php if ($topicTree !== [] && $hasVisibleTopics): ?>
+        <details class="nav-group" open>
           <summary class="nav-summary">Тематики</summary>
           <div class="nav-list">
             <?php foreach($topicTree as $root): ?>
               <?php $rootCount = (int)($topicCounts[(int)$root['id']] ?? 0); ?>
-              <a class="nav-link<?= $isTopicMode && (int)$root['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$root['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$root['name']) ?> <span class="muted">(<?= $rootCount ?>)</span></a>
+              <?php $visibleChildren = []; ?>
               <?php foreach(($root['children'] ?? []) as $child): ?>
                 <?php $childCount = (int)($topicCounts[(int)$child['id']] ?? 0); ?>
-                <a class="nav-link level-1<?= $isTopicMode && (int)$child['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$child['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$child['name']) ?> <span class="muted">(<?= $childCount ?>)</span></a>
+                <?php if ($childCount < 1) continue; ?>
+                <?php $visibleChildren[] = ['topic' => $child, 'count' => $childCount]; ?>
+              <?php endforeach; ?>
+
+              <?php if ($rootCount > 0): ?>
+                <a class="nav-link<?= $isTopicMode && (int)$root['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$root['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$root['name']) ?> <span class="muted">(<?= $rootCount ?>)</span></a>
+              <?php endif; ?>
+
+              <?php foreach($visibleChildren as $row): ?>
+                <?php $child = $row['topic']; $childCount = (int)$row['count']; ?>
+                <a class="nav-link<?= $rootCount > 0 ? ' level-1' : '' ?><?= $isTopicMode && (int)$child['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$child['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$child['name']) ?> <span class="muted">(<?= $childCount ?>)</span></a>
               <?php endforeach; ?>
             <?php endforeach; ?>
           </div>
@@ -484,10 +536,16 @@ function outputWatermarked(string $path, string $mime): never
 </div>
 <?php if ($hasMobilePhotoNav): ?>
   <nav class="mobile-photo-nav" aria-label="Навигация по фото">
+    <button class="mobile-nav-link js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
     <a class="mobile-nav-link" href="?<?= $isTopicMode ? 'topic_id=' . $activeTopicId : 'section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= $isTopicMode ? 'К тематике' : 'К разделу' ?></a>
     <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
     <a class="mobile-nav-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $prevPhotoId < 1 ? 'true' : 'false' ?>">←</a>
     <a class="mobile-nav-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $nextPhotoId < 1 ? 'true' : 'false' ?>">→</a>
+  </nav>
+<?php elseif ($hasMobileCatalogNav): ?>
+  <nav class="mobile-catalog-nav" aria-label="Навигация по каталогу">
+    <button class="mobile-nav-link js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
+    <div class="mobile-nav-meta"><?= h($catalogLocationLabel !== '' ? $catalogLocationLabel : 'Каталог') ?><?= $photos !== [] ? ' · ' . count($photos) : '' ?></div>
   </nav>
 <?php endif; ?>
 <script>
@@ -504,30 +562,38 @@ function outputWatermarked(string $path, string $mime): never
     return;
   }
 
-  const toggle = document.querySelector('.js-sidebar-toggle');
+  const toggles = Array.from(document.querySelectorAll('.js-sidebar-toggle'));
   const sidebar = document.getElementById('sidebar');
   const closers = document.querySelectorAll('.js-sidebar-close');
-  if (!toggle || !sidebar || closers.length === 0) {
+  if (toggles.length === 0 || !sidebar || closers.length === 0) {
     return;
   }
 
+  const setExpanded = (value) => {
+    toggles.forEach((toggle) => {
+      toggle.setAttribute('aria-expanded', value ? 'true' : 'false');
+    });
+  };
+
   const closeSidebar = () => {
     body.classList.remove('sidebar-open');
-    toggle.setAttribute('aria-expanded', 'false');
+    setExpanded(false);
   };
 
   const openSidebar = () => {
     body.classList.add('sidebar-open');
-    toggle.setAttribute('aria-expanded', 'true');
+    setExpanded(true);
   };
 
-  toggle.addEventListener('click', () => {
-    if (body.classList.contains('sidebar-open')) {
-      closeSidebar();
-      return;
-    }
+  toggles.forEach((toggle) => {
+    toggle.addEventListener('click', () => {
+      if (body.classList.contains('sidebar-open')) {
+        closeSidebar();
+        return;
+      }
 
-    openSidebar();
+      openSidebar();
+    });
   });
 
   closers.forEach((btn) => {
