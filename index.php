@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
                 $commentSaved = true;
             } catch (Throwable $e) {
                 error_log('Comment add failed: ' . $e->getMessage());
-                $errorMessage = 'Ошибка отправки комментария: ' . $e->getMessage();
+                $errorMessage = 'Не удалось отправить комментарий.';
                 $errorCode = 500;
             }
         } else {
@@ -691,7 +691,7 @@ function outputWatermarked(string $path, string $mime): never
 
           <h3 class="detail-comments-title">Комментарии</h3>
           <?php if ($viewer): ?>
-            <form class="js-comment-form comment-form" method="post" action="index.php?photo_id=<?= (int)$photo['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">
+            <form class="js-comment-form comment-form" method="post" action="" data-script-path="<?= h((string)($_SERVER['SCRIPT_NAME'] ?? '/index.php')) ?>">
               <input type="hidden" name="action" value="add_comment">
               <input type="hidden" name="photo_id" value="<?= (int)$photo['id'] ?>">
               <input type="hidden" name="section_id" value="<?= $isSectionMode ? (int)$detailSectionId : 0 ?>">
@@ -996,21 +996,57 @@ function outputWatermarked(string $path, string $mime): never
       setCommentFeedback('', false);
 
       try {
-        const response = await fetch(commentForm.action, {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
+        const endpoints = [];
+        const pushEndpoint = (url) => {
+          if (!url) {
+            return;
           }
-        });
+          if (!endpoints.includes(url)) {
+            endpoints.push(url);
+          }
+        };
 
-        const raw = await response.text();
+        pushEndpoint(commentForm.action || window.location.href);
+
+        const scriptPath = String(commentForm.dataset.scriptPath || '').trim();
+        if (scriptPath !== '') {
+          const fallback = new URL(scriptPath, window.location.origin);
+          fallback.search = window.location.search;
+          pushEndpoint(fallback.toString());
+        }
+
+        let response = null;
+        let raw = '';
         let payload = null;
-        try {
-          payload = JSON.parse(raw);
-        } catch {
-          payload = null;
+        let usedEndpoint = '';
+
+        for (const endpoint of endpoints) {
+          usedEndpoint = endpoint;
+          response = await fetch(endpoint, {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            }
+          });
+
+          raw = await response.text();
+          try {
+            payload = JSON.parse(raw);
+          } catch {
+            payload = null;
+          }
+
+          if (response.status === 404 && endpoints[endpoints.length - 1] !== endpoint) {
+            continue;
+          }
+
+          break;
+        }
+
+        if (!response) {
+          throw new Error('Не удалось отправить комментарий.');
         }
 
         if (!payload) {
@@ -1019,7 +1055,8 @@ function outputWatermarked(string $path, string $mime): never
             return;
           }
 
-          throw new Error(raw.trim() !== '' ? raw.slice(0, 220) : 'Не удалось отправить комментарий.');
+          const rawMessage = raw.trim() !== '' ? raw.slice(0, 220) : '';
+          throw new Error(rawMessage !== '' ? `HTTP ${response.status}: ${rawMessage}` : `HTTP ${response.status}: ${usedEndpoint}`);
         }
 
         if (!response.ok || payload.ok !== true) {
