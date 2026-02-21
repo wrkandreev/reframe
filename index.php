@@ -37,8 +37,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
             try {
                 $savedComment = commentAdd($photoId, (int)$u['id'], limitText($text, 1000));
                 $commentSaved = true;
-            } catch (Throwable) {
-                $errorMessage = 'Не удалось отправить комментарий.';
+            } catch (Throwable $e) {
+                error_log('Comment add failed: ' . $e->getMessage());
+                $errorMessage = 'Ошибка отправки комментария: ' . $e->getMessage();
                 $errorCode = 500;
             }
         } else {
@@ -1004,9 +1005,25 @@ function outputWatermarked(string $path, string $mime): never
           }
         });
 
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload || payload.ok !== true) {
-          throw new Error(payload && payload.message ? String(payload.message) : 'Не удалось отправить комментарий.');
+        const raw = await response.text();
+        let payload = null;
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          payload = null;
+        }
+
+        if (!payload) {
+          if (response.ok) {
+            window.location.reload();
+            return;
+          }
+
+          throw new Error(raw.trim() !== '' ? raw.slice(0, 220) : 'Не удалось отправить комментарий.');
+        }
+
+        if (!response.ok || payload.ok !== true) {
+          throw new Error(payload.message ? String(payload.message) : 'Не удалось отправить комментарий.');
         }
 
         setCommentFeedback(payload.message || 'Ваш комментарий отправлен.', false);
