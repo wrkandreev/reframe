@@ -42,16 +42,16 @@ photo.andr33v.ru/
 ├─ admin.php                     # админка по токену
 ├─ index-mysql.php               # alias -> index.php
 ├─ admin-mysql.php               # alias -> admin.php
-├─ deploy.php                    # webhook деплоя
 ├─ style.css                     # базовые стили
 ├─ favicon.svg
-├─ config.php.example            # шаблон конфига БД
-├─ deploy-config.php.example     # шаблон токена/настроек деплоя
+├─ config.php.example            # шаблон конфига БД и деплоя
+├─ secrets.php.example           # шаблон секретов админки
 ├─ lib/
 │  ├─ db.php                     # PDO + загрузка config.php
 │  ├─ db_gallery.php             # доступ к данным галереи
 │  ├─ thumbs.php                 # генерация/чтение/удаление превью
 │  ├─ admin_http.php             # JSON-ответы админки
+│  ├─ admin_deploy.php           # проверка обновлений и запуск деплоя
 │  ├─ admin_get_actions.php      # GET-экшены админки
 │  ├─ admin_post_actions.php     # POST-экшены админки
 │  └─ admin_helpers.php          # helper-функции админки
@@ -87,36 +87,49 @@ cp config.php.example config.php
 
 2. Заполни доступы к БД в `config.php`.
 
-3. Прогон миграций:
+3. Создай `secrets.php`:
+
+```bash
+cp secrets.php.example secrets.php
+```
+
+4. Заполни минимум `admin_token` в `secrets.php`.
+
+5. Прогон миграций:
 
 ```bash
 php scripts/migrate.php
 ```
 
-4. Локальный запуск:
+6. Локальный запуск:
 
 ```bash
 php -S 127.0.0.1:8080
 ```
 
-5. Открой:
+7. Открой:
 
 - `http://127.0.0.1:8080` — публичная часть,
-- `http://127.0.0.1:8080/admin.php?token=<SECRET>` — админка (после настройки `deploy-config.php`).
+- `http://127.0.0.1:8080/admin.php?token=<SECRET>` — админка (токен из `secrets.php`).
 
 ## Настройка админки
 
-Админка использует `token` из `deploy-config.php`.
+Админка использует секреты из `secrets.php`.
 
 Создай файл:
 
 ```bash
-cp deploy-config.php.example deploy-config.php
+cp secrets.php.example secrets.php
 ```
 
 Минимально заполни:
 
-- `token` — длинный случайный секрет.
+- `admin_token` — длинный случайный секрет.
+
+Опционально можно ограничить доступ:
+
+- `basic_auth_user` / `basic_auth_pass` — HTTP Basic слой поверх админки,
+- `allowed_admin_ips` — белый список IP (строгое совпадение строк).
 
 В админке доступны разделы:
 
@@ -144,20 +157,22 @@ php scripts/generate_thumbs.php
 
 ## Деплой
 
-Webhook:
+Деплой запускается из админки (вкладка `Настройки`):
 
-- `deploy.php?token=<SECRET>`
+- кнопка `Проверить обновления` делает `git fetch` и сравнивает `HEAD` с `origin/<branch>`,
+- если локальная ветка отстает и не расходится (`behind > 0`, `ahead = 0`) — показывается кнопка `Обновить проект`.
 
 Скрипт `scripts/deploy.sh`:
 
 1. делает `git fetch --all --prune`,
 2. переключает код на `origin/<branch>` через `git reset --hard`,
-3. сохраняет runtime-папки (`photos`, `thumbs`, `data`).
+3. запускает миграции `php scripts/migrate.php`,
+4. сохраняет runtime-папки (`photos`, `thumbs`, `data`).
 
 Важно: деплой-скрипт перетирает рабочие изменения в репозитории на сервере.
 
 ## Примечания
 
 - Проект принудительно редиректит на HTTPS и non-www через `.htaccess`.
-- Для production рекомендуется ограничить webhook по IP и/или Basic Auth (`deploy-config.php`).
+- Для production рекомендуется включить IP whitelist и/или Basic Auth в `secrets.php`.
 - Если `config.php` отсутствует, приложение корректно падает с ошибкой подключения к БД.

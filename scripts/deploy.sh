@@ -7,9 +7,11 @@ set -euo pipefail
 # Optional env:
 #   APP_DIR=/home/USER/www/photo-gallery
 #   BRANCH=main
+#   PHP_BIN=php
 
 APP_DIR="${APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BRANCH="${BRANCH:-main}"
+PHP_BIN="${PHP_BIN:-php}"
 
 cd "$APP_DIR"
 
@@ -41,6 +43,9 @@ fi
 
 git fetch --all --prune
 git reset --hard "origin/$BRANCH"
+
+# Run DB migrations required by current code
+"$PHP_BIN" scripts/migrate.php
 
 # Make sure runtime files exist
 [ -f data/last_indexed.txt ] || echo "0" > data/last_indexed.txt

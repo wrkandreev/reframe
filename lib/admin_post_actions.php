@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
-function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot): array
+function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot, array $deployOptions = []): array
 {
     $message = '';
     $errors = [];
+    $deployStatus = null;
+    $deployOutput = '';
 
     switch ($action) {
         case 'create_section': {
@@ -138,6 +140,56 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
             settingSet('watermark_brightness', (string)$wmBrightness);
             settingSet('watermark_angle', (string)$wmAngle);
             $message = 'Настройки сохранены';
+            break;
+        }
+
+        case 'check_updates': {
+            $branch = (string)($deployOptions['branch'] ?? 'main');
+            $deployStatus = adminCheckForUpdates($projectRoot, $branch);
+            $state = (string)($deployStatus['state'] ?? '');
+
+            if ($state === 'update_available') {
+                $message = 'Найдена новая версия. Можно обновиться.';
+            } elseif ($state === 'up_to_date') {
+                $message = 'Обновлений нет: установлена актуальная версия.';
+            } elseif ($state === 'local_ahead') {
+                $message = 'Локальная ветка опережает origin. Автообновление отключено.';
+            } else {
+                $message = 'Ветка расходится с origin. Нужна ручная синхронизация.';
+            }
+
+            break;
+        }
+
+        case 'deploy_updates': {
+            $branch = (string)($deployOptions['branch'] ?? 'main');
+            $scriptPath = (string)($deployOptions['script'] ?? ($projectRoot . '/scripts/deploy.sh'));
+            $phpBin = (string)($deployOptions['php_bin'] ?? 'php');
+
+            $deployStatus = adminCheckForUpdates($projectRoot, $branch);
+            if (!(bool)($deployStatus['can_deploy'] ?? false)) {
+                $state = (string)($deployStatus['state'] ?? '');
+                if ($state === 'up_to_date') {
+                    $message = 'Обновление не требуется: уже актуальная версия.';
+                    break;
+                }
+                if ($state === 'local_ahead') {
+                    throw new RuntimeException('Локальная ветка опережает origin. Автообновление отключено.');
+                }
+                if ($state === 'diverged') {
+                    throw new RuntimeException('Ветка расходится с origin. Выполни ручную синхронизацию.');
+                }
+                throw new RuntimeException('Нельзя применить обновление в текущем состоянии ветки.');
+            }
+
+            $deployResult = adminRunDeployScript($projectRoot, $branch, $scriptPath, $phpBin);
+            $deployOutput = (string)($deployResult['output'] ?? '');
+            if (!(bool)($deployResult['ok'] ?? false)) {
+                throw new RuntimeException('Деплой завершился с ошибкой: ' . ($deployOutput !== '' ? $deployOutput : ('код ' . (int)($deployResult['code'] ?? 1))));
+            }
+
+            $deployStatus = adminCheckForUpdates($projectRoot, $branch);
+            $message = 'Обновление выполнено.';
             break;
         }
 
@@ -392,5 +444,10 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
         }
     }
 
-    return ['message' => $message, 'errors' => $errors];
+    return [
+        'message' => $message,
+        'errors' => $errors,
+        'deploy_status' => $deployStatus,
+        'deploy_output' => $deployOutput,
+    ];
 }

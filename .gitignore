@@ -15,8 +15,8 @@ Thumbs.db
 .vscode/
 
 # Local secrets
-deploy-config.php
 config.php
+secrets.php
 
 # Logs/temp
 *.log

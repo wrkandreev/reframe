@@ -8,4 +8,9 @@ return [
         'pass' => 'change_me',
         'charset' => 'utf8mb4',
     ],
+    'deploy' => [
+        'branch' => 'main',
+        'script' => __DIR__ . '/scripts/deploy.sh',
+        'php_bin' => 'php',
+    ],
 ];

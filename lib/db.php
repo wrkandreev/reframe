@@ -22,6 +22,26 @@ function appConfig(): array
     return $cfg;
 }
 
+function appSecrets(): array
+{
+    static $secrets = null;
+    if ($secrets !== null) {
+        return $secrets;
+    }
+
+    $path = __DIR__ . '/../secrets.php';
+    if (!is_file($path)) {
+        throw new RuntimeException('secrets.php not found. Copy secrets.php.example');
+    }
+
+    $secrets = require $path;
+    if (!is_array($secrets)) {
+        throw new RuntimeException('Invalid secrets.php format');
+    }
+
+    return $secrets;
+}
+
 function db(): PDO
 {
     static $pdo = null;

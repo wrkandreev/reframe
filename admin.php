@@ -6,19 +6,29 @@ require_once __DIR__ . '/lib/db_gallery.php';
 require_once __DIR__ . '/lib/thumbs.php';
 require_once __DIR__ . '/lib/admin_http.php';
 require_once __DIR__ . '/lib/admin_helpers.php';
+require_once __DIR__ . '/lib/admin_deploy.php';
 require_once __DIR__ . '/lib/admin_get_actions.php';
 require_once __DIR__ . '/lib/admin_post_actions.php';
 
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
 
-$configPath = __DIR__ . '/deploy-config.php';
-if (!is_file($configPath)) {
+try {
+    $config = appConfig();
+    $secrets = appSecrets();
+} catch (Throwable $e) {
     http_response_code(500);
-    exit('deploy-config.php not found');
+    exit($e->getMessage());
 }
-$config = require $configPath;
-$basicUser = (string)($config['basic_auth_user'] ?? '');
-$basicPass = (string)($config['basic_auth_pass'] ?? '');
+
+$allowedAdminIps = array_values(array_filter(array_map(static fn($ip): string => trim((string)$ip), (array)($secrets['allowed_admin_ips'] ?? [])), static fn(string $ip): bool => $ip !== ''));
+$clientIp = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+if ($allowedAdminIps !== [] && !in_array($clientIp, $allowedAdminIps, true)) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
+$basicUser = (string)($secrets['basic_auth_user'] ?? '');
+$basicPass = (string)($secrets['basic_auth_pass'] ?? '');
 
 if ($basicUser !== '' || $basicPass !== '') {
     $authUser = (string)($_SERVER['PHP_AUTH_USER'] ?? '');
@@ -30,11 +40,25 @@ if ($basicUser !== '' || $basicPass !== '') {
     }
 }
 
-$tokenExpected = (string)($config['token'] ?? '');
+$tokenExpected = (string)($secrets['admin_token'] ?? '');
 $tokenIncoming = (string)($_REQUEST['token'] ?? '');
 if ($tokenExpected === '' || !hash_equals($tokenExpected, $tokenIncoming)) {
     http_response_code(403);
     exit('Forbidden');
+}
+
+$deployConfig = (array)($config['deploy'] ?? []);
+$deployBranch = trim((string)($deployConfig['branch'] ?? 'main'));
+if ($deployBranch === '') {
+    $deployBranch = 'main';
+}
+$deployScript = trim((string)($deployConfig['script'] ?? (__DIR__ . '/scripts/deploy.sh')));
+if ($deployScript !== '' && !str_starts_with($deployScript, '/')) {
+    $deployScript = __DIR__ . '/' . ltrim($deployScript, '/');
+}
+$deployPhpBin = trim((string)($deployConfig['php_bin'] ?? 'php'));
+if ($deployPhpBin === '') {
+    $deployPhpBin = 'php';
 }
 
 $requestAction = (string)($_REQUEST['action'] ?? '');
@@ -44,6 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 $message = '';
 $errors = [];
+$deployStatus = null;
+$deployOutput = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? '');
@@ -51,8 +77,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         || strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
 
     try {
-        $result = adminHandlePostAction($action, $isAjax, __DIR__);
+        $result = adminHandlePostAction($action, $isAjax, __DIR__, [
+            'branch' => $deployBranch,
+            'script' => $deployScript,
+            'php_bin' => $deployPhpBin,
+        ]);
         $message = (string)($result['message'] ?? '');
+        $deployStatus = $result['deploy_status'] ?? null;
+        $deployOutput = (string)($result['deploy_output'] ?? '');
         if (isset($result['errors']) && is_array($result['errors']) && $result['errors'] !== []) {
             $errors = array_merge($errors, $result['errors']);
         }
@@ -134,6 +166,8 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
     .sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}
     .sec a.active{background:#eef4ff;color:#1f6feb}
     .small{font-size:12px;color:#667085}
+    .deploy-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .deploy-output{margin-top:10px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;font-size:12px;white-space:pre-wrap;line-height:1.4;max-height:220px;overflow:auto}
     .inline-form{margin:0}
     .after-slot{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
     .preview-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:nowrap}
@@ -242,6 +276,43 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
           </p>
           <button class="btn" type="submit">Сохранить настройки</button>
         </form>
+
+        <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
+        <h4 style="margin:0 0 8px">Обновление проекта</h4>
+        <p class="small" style="margin:0">Ветка: <strong><?= h($deployBranch) ?></strong></p>
+
+        <?php if (is_array($deployStatus)): ?>
+          <?php $deployState = (string)($deployStatus['state'] ?? ''); ?>
+          <?php $deployStateMessage = $deployState === 'update_available'
+              ? 'Доступна новая версия.'
+              : ($deployState === 'up_to_date'
+                  ? 'Установлена актуальная версия.'
+                  : ($deployState === 'local_ahead'
+                      ? 'Локальная ветка опережает origin. Автообновление отключено.'
+                      : 'Ветка расходится с origin. Нужна ручная синхронизация.')); ?>
+          <div class="<?= in_array($deployState, ['local_ahead', 'diverged'], true) ? 'err' : 'ok' ?>" style="margin-top:8px">
+            <?= h($deployStateMessage) ?><br>
+            <span class="small">Локально: <?= h((string)($deployStatus['local_ref'] ?? '-')) ?> · origin/<?= h($deployBranch) ?>: <?= h((string)($deployStatus['remote_ref'] ?? '-')) ?> · behind: <?= (int)($deployStatus['behind'] ?? 0) ?> · ahead: <?= (int)($deployStatus['ahead'] ?? 0) ?></span>
+          </div>
+        <?php endif; ?>
+
+        <div class="deploy-actions">
+          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">
+            <input type="hidden" name="action" value="check_updates"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+            <button class="btn btn-secondary" type="submit">Проверить обновления</button>
+          </form>
+
+          <?php if (is_array($deployStatus) && !empty($deployStatus['can_deploy'])): ?>
+            <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome" onsubmit="return confirm('Обновить код из origin/<?= h($deployBranch) ?> и запустить миграции?')">
+              <input type="hidden" name="action" value="deploy_updates"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+              <button class="btn" type="submit">Обновить проект</button>
+            </form>
+          <?php endif; ?>
+        </div>
+
+        <?php if ($deployOutput !== ''): ?>
+          <pre class="deploy-output"><?= h($deployOutput) ?></pre>
+        <?php endif; ?>
       </section>
       <?php endif; ?>
 
