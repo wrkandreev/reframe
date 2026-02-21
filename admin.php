@@ -125,6 +125,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        if ($action === 'rotate_photo_file') {
+            $photoId = (int)($_POST['photo_id'] ?? 0);
+            $kind = (string)($_POST['kind'] ?? '');
+            $direction = (string)($_POST['direction'] ?? 'right');
+            if ($photoId < 1) throw new RuntimeException('Некорректный photo_id');
+            if (!in_array($kind, ['before', 'after'], true)) throw new RuntimeException('Некорректный тип файла');
+
+            $photo = photoById($photoId);
+            if (!$photo) throw new RuntimeException('Фото не найдено');
+
+            $pathKey = $kind === 'before' ? 'before_path' : 'after_path';
+            $relPath = (string)($photo[$pathKey] ?? '');
+            if ($relPath === '') throw new RuntimeException('Файл отсутствует');
+
+            $absPath = __DIR__ . '/' . ltrim($relPath, '/');
+            if (!is_file($absPath)) throw new RuntimeException('Файл не найден на диске');
+
+            $degrees = $direction === 'left' ? -90 : 90;
+            rotateImageOnDisk($absPath, $degrees);
+
+            $st = db()->prepare('UPDATE photo_files SET updated_at=CURRENT_TIMESTAMP WHERE photo_id=:pid AND kind=:kind');
+            $st->execute(['pid' => $photoId, 'kind' => $kind]);
+
+            $message = 'Изображение повернуто';
+        }
+
         if ($action === 'create_commenter') {
             $displayName = trim((string)($_POST['display_name'] ?? ''));
             if ($displayName === '') throw new RuntimeException('Укажи имя комментатора');
@@ -186,6 +212,7 @@ if ($adminMode === 'media') {
 if (!in_array($adminMode, ['sections', 'photos', 'comments', 'welcome'], true)) {
     $adminMode = 'photos';
 }
+$previewVersion = (string)time();
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
@@ -333,6 +360,70 @@ function removeSectionImageFiles(int $sectionId): void
     }
 }
 
+function rotateImageOnDisk(string $path, int $degrees): void
+{
+    $mime = mime_content_type($path) ?: '';
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        throw new RuntimeException('Недопустимый тип файла для поворота');
+    }
+
+    if (extension_loaded('imagick')) {
+        $im = new Imagick($path);
+        $im->setImageOrientation(Imagick::ORIENTATION_TOPLEFT);
+        $im->rotateImage(new ImagickPixel('none'), $degrees);
+        $im->setImagePage(0, 0, 0, 0);
+        if ($mime === 'image/jpeg') {
+            $im->setImageCompressionQuality(92);
+        }
+        $im->writeImage($path);
+        $im->clear();
+        $im->destroy();
+        return;
+    }
+
+    $src = match ($mime) {
+        'image/jpeg' => @imagecreatefromjpeg($path),
+        'image/png' => @imagecreatefrompng($path),
+        'image/webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($path) : false,
+        'image/gif' => @imagecreatefromgif($path),
+        default => false,
+    };
+    if (!$src) {
+        throw new RuntimeException('Не удалось открыть изображение');
+    }
+
+    $bgColor = 0;
+    if ($mime === 'image/png' || $mime === 'image/webp') {
+        $bgColor = imagecolorallocatealpha($src, 0, 0, 0, 127);
+    }
+
+    $rotated = imagerotate($src, -$degrees, $bgColor);
+    if (!$rotated) {
+        imagedestroy($src);
+        throw new RuntimeException('Не удалось повернуть изображение');
+    }
+
+    if ($mime === 'image/png' || $mime === 'image/webp') {
+        imagealphablending($rotated, false);
+        imagesavealpha($rotated, true);
+    }
+
+    $ok = match ($mime) {
+        'image/jpeg' => imagejpeg($rotated, $path, 92),
+        'image/png' => imagepng($rotated, $path),
+        'image/webp' => function_exists('imagewebp') ? imagewebp($rotated, $path, 92) : false,
+        'image/gif' => imagegif($rotated, $path),
+        default => false,
+    };
+
+    imagedestroy($src);
+    imagedestroy($rotated);
+
+    if (!$ok) {
+        throw new RuntimeException('Не удалось сохранить повернутое изображение');
+    }
+}
+
 function nextSortOrderForSection(int $sectionId): int
 {
     $st = db()->prepare('SELECT COALESCE(MAX(sort_order),0)+10 FROM photos WHERE section_id=:sid');
@@ -362,7 +453,7 @@ function nextUniqueCodeName(string $base): string
   <title>Админка</title>
   <link rel="icon" type="image/svg+xml" href="<?= h(assetUrl('favicon.svg')) ?>">
   <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
-  <style>.wrap{max-width:1180px;margin:0 auto;padding:24px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}.grid{display:grid;gap:12px;grid-template-columns:320px 1fr}.in{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px}.btn{border:0;background:#1f6feb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}.btn-danger{background:#b42318}.ok{background:#ecfdf3;padding:8px;border-radius:8px;margin-bottom:8px}.err{background:#fef2f2;padding:8px;border-radius:8px;margin-bottom:8px}.tbl{width:100%;border-collapse:collapse}.tbl td,.tbl th{padding:8px;border-bottom:1px solid #eee;vertical-align:top}.sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}.sec a.active{background:#eef4ff;color:#1f6feb}.small{font-size:12px;color:#667085}</style>
+  <style>.wrap{max-width:1180px;margin:0 auto;padding:24px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}.grid{display:grid;gap:12px;grid-template-columns:320px 1fr}.in{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px}.btn{border:0;background:#1f6feb;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}.btn-danger{background:#b42318}.btn-secondary{background:#eaf1ff;color:#1f6feb}.btn-xs{padding:6px 8px;font-size:12px}.ok{background:#ecfdf3;padding:8px;border-radius:8px;margin-bottom:8px}.err{background:#fef2f2;padding:8px;border-radius:8px;margin-bottom:8px}.tbl{width:100%;border-collapse:collapse}.tbl td,.tbl th{padding:8px;border-bottom:1px solid #eee;vertical-align:top}.sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}.sec a.active{background:#eef4ff;color:#1f6feb}.small{font-size:12px;color:#667085}</style>
 </head>
 <body><div class="wrap">
   <h1>Админка</h1>
@@ -474,8 +565,36 @@ function nextUniqueCodeName(string $base): string
           <tr><th>До</th><th>После</th><th>Поля</th><th>Действия</th></tr>
           <?php foreach($photos as $p): ?>
             <tr>
-              <td><?php if (!empty($p['before_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
-              <td><?php if (!empty($p['after_file_id'])): ?><img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px"><?php endif; ?></td>
+              <td>
+                <?php if (!empty($p['before_file_id'])): ?>
+                  <img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                      <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="before"><input type="hidden" name="direction" value="left">
+                      <button class="btn btn-secondary btn-xs" type="submit">↺ 90°</button>
+                    </form>
+                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                      <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="before"><input type="hidden" name="direction" value="right">
+                      <button class="btn btn-secondary btn-xs" type="submit">↻ 90°</button>
+                    </form>
+                  </div>
+                <?php endif; ?>
+              </td>
+              <td>
+                <?php if (!empty($p['after_file_id'])): ?>
+                  <img class="js-open" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                      <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="after"><input type="hidden" name="direction" value="left">
+                      <button class="btn btn-secondary btn-xs" type="submit">↺ 90°</button>
+                    </form>
+                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                      <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="after"><input type="hidden" name="direction" value="right">
+                      <button class="btn btn-secondary btn-xs" type="submit">↻ 90°</button>
+                    </form>
+                  </div>
+                <?php endif; ?>
+              </td>
               <td>
                 <form class="js-photo-form" method="post" enctype="multipart/form-data" action="admin.php?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                   <input type="hidden" name="action" value="photo_update"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
