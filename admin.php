@@ -240,25 +240,18 @@ if (!$activeSection && $sections !== []) {
 }
 $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 $commenters = commentersAll();
-$latestComments = commentsLatest(80);
 $welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
 $adminMode = (string)($_GET['mode'] ?? 'photos');
 if ($adminMode === 'media') {
     $adminMode = 'photos';
 }
-if (!in_array($adminMode, ['sections', 'photos', 'comments', 'welcome'], true)) {
+if (!in_array($adminMode, ['sections', 'photos', 'commenters', 'comments', 'welcome'], true)) {
     $adminMode = 'photos';
 }
 $previewVersion = (string)time();
-$commentPhotoId = (int)($_GET['comment_photo_id'] ?? ($_POST['comment_photo_id'] ?? 0));
-if ($commentPhotoId < 0) {
-    $commentPhotoId = 0;
-}
-$selectedCommentPhoto = $commentPhotoId > 0 ? photoById($commentPhotoId) : null;
-if (!$selectedCommentPhoto) {
-    $commentPhotoId = 0;
-}
-$photoComments = $commentPhotoId > 0 ? commentsByPhoto($commentPhotoId) : [];
+$commentPhotoQuery = trim((string)($_GET['comment_photo'] ?? ($_POST['comment_photo'] ?? '')));
+$commentUserQuery = trim((string)($_GET['comment_user'] ?? ($_POST['comment_user'] ?? '')));
+$filteredComments = commentsSearch($commentPhotoQuery, $commentUserQuery, 200);
 $photoCommentCounts = commentCountsByPhotoIds(array_map(static fn(array $p): int => (int)$p['id'], $photos));
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
@@ -280,6 +273,36 @@ function commentCountsByPhotoIds(array $photoIds): array
         $map[(int)$row['photo_id']] = (int)$row['cnt'];
     }
     return $map;
+}
+
+function commentsSearch(string $photoQuery, string $userQuery, int $limit = 200): array
+{
+    $limit = max(1, min(500, $limit));
+    $where = [];
+    $params = [];
+
+    if ($photoQuery !== '') {
+        $where[] = 'p.code_name LIKE :photo';
+        $params['photo'] = '%' . $photoQuery . '%';
+    }
+    if ($userQuery !== '') {
+        $where[] = 'COALESCE(u.display_name, "") LIKE :user';
+        $params['user'] = '%' . $userQuery . '%';
+    }
+
+    $sql = 'SELECT c.id, c.photo_id, c.comment_text, c.created_at, p.code_name, u.display_name
+            FROM photo_comments c
+            JOIN photos p ON p.id=c.photo_id
+            LEFT JOIN comment_users u ON u.id=c.user_id';
+
+    if ($where !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $where);
+    }
+
+    $sql .= ' ORDER BY c.id DESC LIMIT ' . $limit;
+    $st = db()->prepare($sql);
+    $st->execute($params);
+    return $st->fetchAll();
 }
 
 function saveBulkBefore(array $files, int $sectionId): array
@@ -548,6 +571,9 @@ function nextUniqueCodeName(string $base): string
     .comment-row:first-child{border-top:0;padding-top:0}
     .comment-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
     .comment-row-body{white-space:pre-wrap}
+    .comment-search{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto auto;gap:8px;align-items:center;margin-bottom:12px}
+    .comment-search .btn{height:36px}
+    @media (max-width:760px){.comment-search{grid-template-columns:1fr}}
     @media (max-width:960px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
@@ -564,7 +590,8 @@ function nextUniqueCodeName(string $base): string
           <a class="<?= $adminMode==='sections'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=sections<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Разделы</a>
           <a class="<?= $adminMode==='photos'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Фото</a>
           <a class="<?= $adminMode==='welcome'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">Приветственное сообщение</a>
-          <a class="<?= $adminMode==='comments'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Комментаторы и комментарии</a>
+          <a class="<?= $adminMode==='commenters'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">Пользователи комментариев</a>
+          <a class="<?= $adminMode==='comments'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Комментарии</a>
         </div>
       </section>
 
@@ -584,10 +611,10 @@ function nextUniqueCodeName(string $base): string
 
       <?php endif; ?>
 
-      <?php if ($adminMode === 'comments'): ?>
+      <?php if ($adminMode === 'commenters'): ?>
       <section class="card">
-        <h3>Комментаторы</h3>
-        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">
+        <h3>Новый пользователь комментариев</h3>
+        <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">
           <input type="hidden" name="action" value="create_commenter"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
           <p><input class="in" name="display_name" placeholder="Имя" required></p>
           <button class="btn" type="submit">Создать</button>
@@ -724,9 +751,9 @@ function nextUniqueCodeName(string $base): string
 
       <?php endif; ?>
 
-      <?php if ($adminMode === 'comments'): ?>
+      <?php if ($adminMode === 'commenters'): ?>
       <section class="card">
-        <h3>Комментаторы и комментарии</h3>
+        <h3>Пользователи комментариев</h3>
         <table class="tbl"><tr><th>Пользователь</th><th>Ссылка</th><th>Действия</th></tr>
           <?php foreach($commenters as $u): ?>
             <?php $viewerLink = !empty($u['token_plain']) ? ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/?viewer=' . urlencode((string)$u['token_plain'])) : ''; ?>
@@ -737,50 +764,45 @@ function nextUniqueCodeName(string $base): string
                 <span class="small">Нет сохранённой ссылки (старый пользователь)</span>
               <?php endif; ?>
             </td><td style="display:flex;gap:8px;flex-wrap:wrap">
-              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">
+              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">
                 <input type="hidden" name="action" value="regenerate_commenter_token"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                 <button class="btn" type="submit">Новая ссылка</button>
               </form>
-              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить пользователя?')">
+              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters" onsubmit="return confirm('Удалить пользователя?')">
                 <input type="hidden" name="action" value="delete_commenter"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                 <button class="btn btn-danger" type="submit">Удалить доступ</button>
               </form>
             </td></tr>
           <?php endforeach; ?>
         </table>
-        <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
-        <?php if ($commentPhotoId > 0 && $selectedCommentPhoto): ?>
-          <h4 style="margin:0 0 10px">Комментарии к фото: <?= h((string)$selectedCommentPhoto['code_name']) ?></h4>
-          <?php if ($photoComments === []): ?>
-            <p class="small">К этой карточке комментариев пока нет.</p>
-          <?php else: ?>
-            <table class="tbl"><tr><th>Пользователь</th><th>Комментарий</th><th>Дата</th><th></th></tr>
-              <?php foreach($photoComments as $c): ?>
-                <tr>
-                  <td><?= h((string)($c['display_name'] ?? '—')) ?></td>
-                  <td><?= nl2br(h((string)$c['comment_text'])) ?></td>
-                  <td><?= h((string)$c['created_at']) ?></td>
-                  <td>
-                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments&comment_photo_id=<?= (int)$commentPhotoId ?>" onsubmit="return confirm('Удалить комментарий?')">
-                      <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><input type="hidden" name="comment_photo_id" value="<?= (int)$commentPhotoId ?>">
-                      <button class="btn btn-danger" type="submit">Удалить</button>
-                    </form>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            </table>
-          <?php endif; ?>
-          <p style="margin-top:10px"><a href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Показать все последние комментарии</a></p>
+      </section>
+      <?php endif; ?>
+
+      <?php if ($adminMode === 'comments'): ?>
+      <section class="card">
+        <h3>Комментарии</h3>
+        <form method="get" action="admin.php" class="comment-search">
+          <input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+          <input type="hidden" name="mode" value="comments">
+          <input class="in" type="search" name="comment_photo" value="<?= h($commentPhotoQuery) ?>" placeholder="Поиск по имени фото">
+          <input class="in" type="search" name="comment_user" value="<?= h($commentUserQuery) ?>" placeholder="Поиск по пользователю">
+          <button class="btn" type="submit">Найти</button>
+          <a class="btn btn-secondary" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Сбросить</a>
+        </form>
+
+        <?php if ($filteredComments === []): ?>
+          <p class="small">Комментарии не найдены.</p>
         <?php else: ?>
-          <table class="tbl"><tr><th>Фото</th><th>Пользователь</th><th>Комментарий</th><th></th></tr>
-            <?php foreach($latestComments as $c): ?>
+          <table class="tbl"><tr><th>Фото</th><th>Пользователь</th><th>Комментарий</th><th>Дата</th><th></th></tr>
+            <?php foreach($filteredComments as $c): ?>
               <tr>
                 <td><?= h((string)$c['code_name']) ?></td>
                 <td><?= h((string)($c['display_name'] ?? '—')) ?></td>
                 <td><?= h((string)$c['comment_text']) ?></td>
+                <td><?= h((string)$c['created_at']) ?></td>
                 <td>
                   <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить комментарий?')">
-                    <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                    <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><input type="hidden" name="comment_photo" value="<?= h($commentPhotoQuery) ?>"><input type="hidden" name="comment_user" value="<?= h($commentUserQuery) ?>">
                     <button class="btn btn-danger" type="submit">Удалить</button>
                   </form>
                 </td>

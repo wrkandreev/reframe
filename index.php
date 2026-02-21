@@ -42,6 +42,37 @@ $comments = $photo ? commentsByPhoto($activePhotoId) : [];
 $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 $isHomePage = $activeSectionId < 1 && $activePhotoId < 1;
 
+$detailTotal = 0;
+$detailIndex = 0;
+$prevPhotoId = 0;
+$nextPhotoId = 0;
+$detailSectionId = 0;
+if ($photo) {
+    $detailSectionId = (int)$photo['section_id'];
+    $detailPhotos = photosBySection($detailSectionId);
+    $detailTotal = count($detailPhotos);
+    foreach ($detailPhotos as $i => $p) {
+        if ((int)$p['id'] !== $activePhotoId) {
+            continue;
+        }
+
+        $detailIndex = $i + 1;
+        if ($i > 0) {
+            $prevPhotoId = (int)$detailPhotos[$i - 1]['id'];
+        }
+        if ($i < $detailTotal - 1) {
+            $nextPhotoId = (int)$detailPhotos[$i + 1]['id'];
+        }
+        break;
+    }
+}
+
+$hasMobilePhotoNav = $activePhotoId > 0 && $photo && $detailTotal > 0;
+$bodyClasses = [$isHomePage ? 'is-home' : 'is-inner'];
+if ($hasMobilePhotoNav) {
+    $bodyClasses[] = 'has-mobile-nav';
+}
+
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
 function limitText(string $text, int $len): string { return function_exists('mb_substr') ? mb_substr($text, 0, $len) : substr($text, 0, $len); }
@@ -84,11 +115,22 @@ function outputWatermarked(string $path, string $mime): never
 
     if (extension_loaded('imagick')) {
         $im = new Imagick($path);
+        $w = max(1, (int)$im->getImageWidth());
+        $h = max(1, (int)$im->getImageHeight());
         $draw = new ImagickDraw();
-        $draw->setFillColor(new ImagickPixel('rgba(255,255,255,0.22)'));
-        $draw->setFontSize(max(18, (int)($im->getImageWidth() / 24)));
-        $draw->setGravity(Imagick::GRAVITY_SOUTHEAST);
-        $im->annotateImage($draw, 20, 24, -15, $text);
+        $draw->setFillColor(new ImagickPixel('rgba(255,255,255,0.16)'));
+        $draw->setFontSize(max(12, (int)($w / 46)));
+        $draw->setTextAntialias(true);
+
+        $lineText = $text . '   ' . $text . '   ' . $text;
+        $stepY = max(28, (int)($h / 10));
+        $stepX = max(120, (int)($w / 3));
+        for ($y = -$h; $y < $h * 2; $y += $stepY) {
+            for ($x = -$w; $x < $w * 2; $x += $stepX) {
+                $im->annotateImage($draw, $x, $y, -28, $lineText);
+            }
+        }
+
         header('Content-Type: ' . ($mime !== '' ? $mime : 'image/jpeg'));
         $im->setImageCompressionQuality(88);
         echo $im;
@@ -110,11 +152,19 @@ function outputWatermarked(string $path, string $mime): never
         exit;
     }
 
-    $font = 5;
-    $color = imagecolorallocatealpha($img, 255, 255, 255, 90);
-    $x = max(5, $w - (imagefontwidth($font) * strlen($text)) - 15);
-    $y = max(5, $h - imagefontheight($font) - 12);
-    imagestring($img, $font, $x, $y, $text, $color);
+    $font = 2;
+    $color = imagecolorallocatealpha($img, 255, 255, 255, 96);
+    $lineText = $text . '  ' . $text . '  ' . $text;
+    $stepY = max(16, imagefontheight($font) + 8);
+    $stepX = max(120, (int)($w / 3));
+    $row = 0;
+    for ($y = -$h; $y < $h * 2; $y += $stepY) {
+        $offset = ($row * 22) % $stepX;
+        for ($x = -$w - $offset; $x < $w * 2; $x += $stepX) {
+            imagestring($img, $font, $x, $y, $lineText, $color);
+        }
+        $row++;
+    }
 
     header('Content-Type: image/jpeg');
     imagejpeg($img, null, 88);
@@ -133,6 +183,7 @@ function outputWatermarked(string $path, string $mime): never
     .note{color:#6b7280;font-size:13px}
     .page{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr)}
     .panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}
+    .sidebar{position:sticky;top:14px;align-self:start;max-height:calc(100dvh - 28px);overflow:auto}
     .sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}
     .sec a.active{background:#eef4ff;color:#1f6feb}
     .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
@@ -143,6 +194,14 @@ function outputWatermarked(string $path, string $mime): never
     .stack{display:grid;gap:12px;grid-template-columns:1fr}
     .cmt{border-top:1px solid #eee;padding:8px 0}
     .muted{color:#6b7280;font-size:13px}
+    .pager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb}
+    .pager-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .pager-link{display:inline-flex;align-items:center;justify-content:center;padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#111;text-decoration:none;font-size:14px}
+    .pager-link.disabled{opacity:.45;pointer-events:none}
+    .mobile-photo-nav{display:none}
+    .mobile-nav-link{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid #d1d5db;background:#fff;color:#111;border-radius:10px;padding:9px 10px;text-decoration:none;font-size:14px}
+    .mobile-nav-link.disabled{opacity:.45;pointer-events:none}
+    .mobile-nav-meta{font-size:13px;color:#4b5563;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .img-box{position:relative;display:block;overflow:hidden;background:linear-gradient(110deg,#eef2f7 8%,#f8fafc 18%,#eef2f7 33%);background-size:200% 100%;animation:skeleton 1.2s linear infinite}
     .img-box img{display:block;position:relative;z-index:1}
     .thumb-img-box{height:130px}
@@ -160,6 +219,12 @@ function outputWatermarked(string $path, string $mime): never
       .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px}
       .topbar h1{margin:0;font-size:24px}
       .page{grid-template-columns:1fr}
+      .sidebar{position:static;max-height:none}
+      .pager{display:none}
+
+      .has-mobile-nav .app{padding-bottom:84px}
+      .mobile-photo-nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);backdrop-filter:blur(6px);border-top:1px solid #e5e7eb}
+      .mobile-nav-link{padding:8px 10px;font-size:13px}
 
       .is-inner .sidebar-toggle{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
       .is-inner .sidebar{position:fixed;top:0;left:0;z-index:40;width:min(86vw,320px);height:100dvh;overflow-y:auto;border-radius:0 12px 12px 0;transform:translateX(-105%);transition:transform .2s ease;padding-top:18px}
@@ -175,7 +240,7 @@ function outputWatermarked(string $path, string $mime): never
     }
   </style>
 </head>
-<body class="<?= $isHomePage ? 'is-home' : 'is-inner' ?>">
+<body class="<?= h(implode(' ', $bodyClasses)) ?>">
 <div class="app">
   <header class="topbar">
     <h1>Фотогалерея</h1>
@@ -226,6 +291,16 @@ function outputWatermarked(string $path, string $mime): never
           <?php foreach($comments as $c): ?>
             <div class="cmt"><strong><?= h((string)($c['display_name'] ?? 'Пользователь')) ?></strong> <span class="muted">· <?= h((string)$c['created_at']) ?></span><br><?= nl2br(h((string)$c['comment_text'])) ?></div>
           <?php endforeach; ?>
+
+          <?php if ($detailTotal > 0): ?>
+            <div class="pager">
+              <div class="muted">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?></div>
+              <div class="pager-actions">
+                <a class="pager-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
+                <a class="pager-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
+              </div>
+            </div>
+          <?php endif; ?>
         </section>
       <?php else: ?>
         <section class="panel">
@@ -254,6 +329,14 @@ function outputWatermarked(string $path, string $mime): never
     <small class="footer-author">by <a href="https://t.me/andr33vru" target="_blank" rel="noopener noreferrer">andr33vru</a></small>
   </footer>
 </div>
+<?php if ($hasMobilePhotoNav): ?>
+  <nav class="mobile-photo-nav" aria-label="Навигация по фото">
+    <a class="mobile-nav-link" href="?section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">К разделу</a>
+    <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?></div>
+    <a class="mobile-nav-link<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $prevPhotoId < 1 ? 'true' : 'false' ?>">←</a>
+    <a class="mobile-nav-link<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?>&section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $nextPhotoId < 1 ? 'true' : 'false' ?>">→</a>
+  </nav>
+<?php endif; ?>
 <script>
 (() => {
   document.querySelectorAll('img').forEach((img) => {
