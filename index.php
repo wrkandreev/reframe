@@ -22,12 +22,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     $sectionId = (int)($_POST['section_id'] ?? 0);
     $topicId = (int)($_POST['topic_id'] ?? 0);
     $text = trim((string)($_POST['comment_text'] ?? ''));
+    $isAjax = (string)($_POST['ajax'] ?? '') === '1'
+        || strcasecmp((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''), 'XMLHttpRequest') === 0
+        || str_contains((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
+
+    $commentSaved = false;
+    $errorMessage = '';
 
     if ($token !== '' && $photoId > 0 && $text !== '') {
         $u = commenterByToken($token);
         if ($u) {
             commentAdd($photoId, (int)$u['id'], limitText($text, 1000));
+            $commentSaved = true;
+        } else {
+            $errorMessage = 'Ссылка для комментариев недействительна.';
         }
+    } else {
+        $errorMessage = 'Заполни текст комментария.';
+    }
+
+    if ($isAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+        if ($commentSaved) {
+            echo json_encode(['ok' => true, 'message' => 'Ваш комментарий отправлен.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'message' => $errorMessage !== '' ? $errorMessage : 'Не удалось отправить комментарий.'], JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
     $redirect = './?photo_id=' . $photoId;
@@ -435,6 +458,8 @@ function outputWatermarked(string $path, string $mime): never
     .comment-input{width:100%;min-height:94px;border:1px solid #d1d5db;border-radius:10px;padding:10px;line-height:1.45;resize:vertical}
     .comment-input:focus{outline:0;border-color:#1f6feb;box-shadow:0 0 0 3px rgba(31,111,235,.16)}
     .comment-actions{margin:0}
+    .comment-feedback{margin:0;padding:9px 11px;border:1px solid #d1fae5;border-radius:10px;background:#ecfdf5;color:#065f46;font-size:13px;line-height:1.35}
+    .comment-feedback.is-error{border-color:#fecaca;background:#fef2f2;color:#991b1b}
     .cmt{border-top:1px solid #e8edf5;padding-top:10px;margin-top:10px;line-height:1.45}
     .detail .cmt:first-of-type{border-top:0;margin-top:0;padding-top:0}
     .muted{color:#6b7280;font-size:13px}
@@ -576,6 +601,7 @@ function outputWatermarked(string $path, string $mime): never
               <input type="hidden" name="viewer" value="<?= h($viewerToken) ?>">
               <textarea class="js-comment-textarea comment-input" name="comment_text" required></textarea>
               <p class="comment-actions"><button class="btn" type="submit">Отправить</button></p>
+              <p class="comment-feedback js-comment-feedback" role="status" aria-live="polite" hidden></p>
             </form>
           <?php else: ?>
             <p class="muted">Комментарии может оставлять только пользователь с персональной ссылкой.</p>
@@ -774,6 +800,94 @@ function outputWatermarked(string $path, string $mime): never
 (() => {
   const commentTextarea = document.querySelector('.js-comment-textarea');
   const commentForm = commentTextarea ? commentTextarea.closest('.js-comment-form') : null;
+  const commentFeedback = commentForm ? commentForm.querySelector('.js-comment-feedback') : null;
+  const commentSubmitButton = commentForm ? commentForm.querySelector('button[type="submit"]') : null;
+
+  const setCommentFeedback = (message, isError) => {
+    if (!commentFeedback) {
+      return;
+    }
+    if (!message) {
+      commentFeedback.hidden = true;
+      commentFeedback.textContent = '';
+      commentFeedback.classList.remove('is-error');
+      return;
+    }
+
+    commentFeedback.hidden = false;
+    commentFeedback.textContent = message;
+    commentFeedback.classList.toggle('is-error', !!isError);
+  };
+
+  const submitCommentForm = () => {
+    if (!commentForm) {
+      return;
+    }
+    if (typeof commentForm.requestSubmit === 'function') {
+      commentForm.requestSubmit();
+      return;
+    }
+    if (commentSubmitButton) {
+      commentSubmitButton.click();
+      return;
+    }
+    commentForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  };
+
+  if (commentForm && commentTextarea) {
+    commentForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (commentForm.dataset.sending === '1') {
+        return;
+      }
+
+      const text = commentTextarea.value.trim();
+      if (text === '') {
+        setCommentFeedback('Заполни текст комментария.', true);
+        return;
+      }
+
+      const formData = new FormData(commentForm);
+      formData.set('ajax', '1');
+
+      commentForm.dataset.sending = '1';
+      if (commentSubmitButton) {
+        commentSubmitButton.disabled = true;
+      }
+      setCommentFeedback('', false);
+
+      try {
+        const response = await fetch(commentForm.action, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || payload.ok !== true) {
+          throw new Error(payload && payload.message ? String(payload.message) : 'Не удалось отправить комментарий.');
+        }
+
+        setCommentFeedback(payload.message || 'Ваш комментарий отправлен.', false);
+        commentTextarea.value = '';
+        commentTextarea.focus();
+      } catch (error) {
+        const fallbackMessage = 'Не удалось отправить комментарий.';
+        const message = error instanceof Error && error.message !== '' ? error.message : fallbackMessage;
+        setCommentFeedback(message, true);
+      } finally {
+        delete commentForm.dataset.sending;
+        if (commentSubmitButton) {
+          commentSubmitButton.disabled = false;
+        }
+      }
+    });
+  }
+
   if (commentTextarea) {
     commentTextarea.addEventListener('keydown', (e) => {
       if (!e.shiftKey || e.key !== 'Enter' || e.isComposing) {
@@ -783,11 +897,7 @@ function outputWatermarked(string $path, string $mime): never
         return;
       }
       e.preventDefault();
-      if (typeof commentForm.requestSubmit === 'function') {
-        commentForm.requestSubmit();
-        return;
-      }
-      commentForm.submit();
+      submitCommentForm();
     });
   }
 

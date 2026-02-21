@@ -17,6 +17,19 @@ if (!is_file($configPath)) {
     exit('deploy-config.php not found');
 }
 $config = require $configPath;
+$basicUser = (string)($config['basic_auth_user'] ?? '');
+$basicPass = (string)($config['basic_auth_pass'] ?? '');
+
+if ($basicUser !== '' || $basicPass !== '') {
+    $authUser = (string)($_SERVER['PHP_AUTH_USER'] ?? '');
+    $authPass = (string)($_SERVER['PHP_AUTH_PW'] ?? '');
+    if (!hash_equals($basicUser, $authUser) || !hash_equals($basicPass, $authPass)) {
+        header('WWW-Authenticate: Basic realm="Admin"');
+        http_response_code(401);
+        exit('Unauthorized');
+    }
+}
+
 $tokenExpected = (string)($config['token'] ?? '');
 $tokenIncoming = (string)($_REQUEST['token'] ?? '');
 if ($tokenExpected === '' || !hash_equals($tokenExpected, $tokenIncoming)) {
