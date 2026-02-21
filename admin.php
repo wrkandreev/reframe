@@ -180,7 +180,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
         </div>
       </section>
 
-      <?php if ($adminMode === 'sections' || $adminMode === 'photos'): ?>
+      <?php if ($adminMode === 'photos'): ?>
       <section class="card">
         <h3>Разделы</h3>
         <div class="sec">
