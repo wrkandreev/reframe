@@ -226,6 +226,9 @@ if ($activeTopicId > 0 && $activeTopicName !== '') {
 } elseif ($detailSectionId > 0 && isset($sectionNames[$detailSectionId])) {
     $detailLocationLabel = 'в разделе «' . $sectionNames[$detailSectionId] . '»';
 }
+$detailCounterLabel = $detailTotal > 0
+    ? ('Фото ' . $detailIndex . ' из ' . $detailTotal . ($detailLocationLabel !== '' ? ' ' . $detailLocationLabel : ''))
+    : '';
 
 $pageHeading = '';
 if ($isTopicMode && $activeTopicShortName !== '') {
@@ -579,10 +582,10 @@ function outputWatermarked(string $path, string $mime): never
           <div class="stack">
             <?php if (!empty($photo['before_file_id'])): ?>
               <div class="detail-frame">
-                <?php if ($hasAfterVersion): ?>
+                <?php if ($hasAfterVersion || $detailCounterLabel !== ''): ?>
                   <div class="detail-frame-head">
-                    <div class="detail-label">До обработки</div>
-                    <?php if ($detailTotal > 0): ?><div class="detail-label detail-position-label">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div><?php endif; ?>
+                    <?php if ($hasAfterVersion): ?><div class="detail-label">До обработки</div><?php endif; ?>
+                    <?php if ($detailCounterLabel !== ''): ?><div class="detail-label detail-position-label"><?= h($detailCounterLabel) ?></div><?php endif; ?>
                   </div>
                 <?php endif; ?>
                 <div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div>
@@ -590,7 +593,14 @@ function outputWatermarked(string $path, string $mime): never
             <?php endif; ?>
             <?php if ($hasAfterVersion): ?>
               <div class="detail-frame">
-                <div class="detail-label">После обработки</div>
+                <?php if (!empty($photo['before_file_id'])): ?>
+                  <div class="detail-label">После обработки</div>
+                <?php else: ?>
+                  <div class="detail-frame-head">
+                    <div class="detail-label">После обработки</div>
+                    <?php if ($detailCounterLabel !== ''): ?><div class="detail-label detail-position-label"><?= h($detailCounterLabel) ?></div><?php endif; ?>
+                  </div>
+                <?php endif; ?>
                 <div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div>
               </div>
             <?php endif; ?>
@@ -627,7 +637,7 @@ function outputWatermarked(string $path, string $mime): never
 
           <?php if ($detailTotal > 0): ?>
             <div class="pager">
-              <div class="muted">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
+              <div class="muted"><?= h($detailCounterLabel) ?></div>
               <div class="pager-actions">
                 <a class="pager-link js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
                 <a class="pager-link js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
