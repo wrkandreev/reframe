@@ -360,10 +360,31 @@ function commentsByPhoto(int $photoId): array
     return $st->fetchAll();
 }
 
-function commentAdd(int $photoId, int $userId, string $text): void
+function commentAdd(int $photoId, int $userId, string $text): array
 {
     $st = db()->prepare('INSERT INTO photo_comments(photo_id, user_id, comment_text) VALUES (:p,:u,:t)');
     $st->execute(['p' => $photoId, 'u' => $userId, 't' => $text]);
+
+    $commentId = (int)db()->lastInsertId();
+    $detail = db()->prepare('SELECT c.*, u.display_name
+                             FROM photo_comments c
+                             LEFT JOIN comment_users u ON u.id=c.user_id
+                             WHERE c.id=:id');
+    $detail->execute(['id' => $commentId]);
+    $row = $detail->fetch();
+
+    if (!$row) {
+        return [
+            'id' => $commentId,
+            'photo_id' => $photoId,
+            'user_id' => $userId,
+            'comment_text' => $text,
+            'created_at' => date('Y-m-d H:i:s'),
+            'display_name' => 'Пользователь',
+        ];
+    }
+
+    return $row;
 }
 
 function commentDelete(int $id): void

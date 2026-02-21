@@ -27,13 +27,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
         || str_contains((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
 
     $commentSaved = false;
+    $savedComment = null;
     $errorMessage = '';
+    $errorCode = 422;
 
     if ($token !== '' && $photoId > 0 && $text !== '') {
         $u = commenterByToken($token);
         if ($u) {
-            commentAdd($photoId, (int)$u['id'], limitText($text, 1000));
-            $commentSaved = true;
+            try {
+                $savedComment = commentAdd($photoId, (int)$u['id'], limitText($text, 1000));
+                $commentSaved = true;
+            } catch (Throwable) {
+                $errorMessage = 'Не удалось отправить комментарий.';
+                $errorCode = 500;
+            }
         } else {
             $errorMessage = 'Ссылка для комментариев недействительна.';
         }
@@ -44,11 +51,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     if ($isAjax) {
         header('Content-Type: application/json; charset=utf-8');
         if ($commentSaved) {
-            echo json_encode(['ok' => true, 'message' => 'Ваш комментарий отправлен.'], JSON_UNESCAPED_UNICODE);
+            echo json_encode([
+                'ok' => true,
+                'message' => 'Ваш комментарий отправлен.',
+                'comment' => $savedComment ? [
+                    'id' => (int)($savedComment['id'] ?? 0),
+                    'comment_text' => (string)($savedComment['comment_text'] ?? ''),
+                    'created_at' => (string)($savedComment['created_at'] ?? ''),
+                    'display_name' => (string)($savedComment['display_name'] ?? 'Пользователь'),
+                ] : null,
+            ], JSON_UNESCAPED_UNICODE);
             exit;
         }
 
-        http_response_code(422);
+        http_response_code($errorCode);
         echo json_encode(['ok' => false, 'message' => $errorMessage !== '' ? $errorMessage : 'Не удалось отправить комментарий.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -688,9 +704,11 @@ function outputWatermarked(string $path, string $mime): never
             <p class="muted">Комментарии может оставлять только пользователь с персональной ссылкой.</p>
           <?php endif; ?>
 
-          <?php foreach($comments as $c): ?>
-            <div class="cmt"><strong><?= h((string)($c['display_name'] ?? 'Пользователь')) ?></strong> <span class="muted">· <?= h((string)$c['created_at']) ?></span><br><?= nl2br(h((string)$c['comment_text'])) ?></div>
-          <?php endforeach; ?>
+          <div class="js-comments-list">
+            <?php foreach($comments as $c): ?>
+              <div class="cmt"><strong><?= h((string)($c['display_name'] ?? 'Пользователь')) ?></strong> <span class="muted">· <?= h((string)$c['created_at']) ?></span><br><?= nl2br(h((string)$c['comment_text'])) ?></div>
+            <?php endforeach; ?>
+          </div>
 
           <?php if ($detailTotal > 0): ?>
             <div class="pager">
@@ -889,6 +907,38 @@ function outputWatermarked(string $path, string $mime): never
   const commentForm = commentTextarea ? commentTextarea.closest('.js-comment-form') : null;
   const commentFeedback = commentForm ? commentForm.querySelector('.js-comment-feedback') : null;
   const commentSubmitButton = commentForm ? commentForm.querySelector('button[type="submit"]') : null;
+  const commentsList = document.querySelector('.js-comments-list');
+
+  const prependComment = (comment) => {
+    if (!commentsList || !comment || typeof comment !== 'object') {
+      return;
+    }
+
+    const item = document.createElement('div');
+    item.className = 'cmt';
+
+    const author = document.createElement('strong');
+    author.textContent = String(comment.display_name || 'Пользователь');
+
+    const meta = document.createElement('span');
+    meta.className = 'muted';
+    meta.textContent = `· ${String(comment.created_at || '')}`;
+
+    item.appendChild(author);
+    item.append(' ');
+    item.appendChild(meta);
+    item.appendChild(document.createElement('br'));
+
+    const lines = String(comment.comment_text || '').split(/\r\n|\r|\n/);
+    lines.forEach((line, index) => {
+      item.append(document.createTextNode(line));
+      if (index < lines.length - 1) {
+        item.appendChild(document.createElement('br'));
+      }
+    });
+
+    commentsList.prepend(item);
+  };
 
   const setCommentFeedback = (message, isError) => {
     if (!commentFeedback) {
@@ -960,6 +1010,9 @@ function outputWatermarked(string $path, string $mime): never
         }
 
         setCommentFeedback(payload.message || 'Ваш комментарий отправлен.', false);
+        if (payload.comment) {
+          prependComment(payload.comment);
+        }
         commentTextarea.value = '';
         commentTextarea.focus();
       } catch (error) {
