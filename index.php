@@ -161,6 +161,8 @@ $detailTotal = 0;
 $detailIndex = 0;
 $prevPhotoId = 0;
 $nextPhotoId = 0;
+$firstPhotoId = 0;
+$lastPhotoId = 0;
 $detailSectionId = 0;
 $photoTopics = [];
 if ($photo) {
@@ -191,6 +193,10 @@ if ($photo) {
         }
     }
     $detailTotal = count($detailPhotos);
+    if ($detailTotal > 0) {
+        $firstPhotoId = (int)$detailPhotos[0]['id'];
+        $lastPhotoId = (int)$detailPhotos[$detailTotal - 1]['id'];
+    }
     foreach ($detailPhotos as $i => $p) {
         if ((int)$p['id'] !== $activePhotoId) {
             continue;
@@ -615,8 +621,8 @@ function outputWatermarked(string $path, string $mime): never
             <div class="pager">
               <div class="muted">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
               <div class="pager-actions">
-                <a class="pager-link js-prev-photo<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
-                <a class="pager-link js-next-photo<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
+                <a class="pager-link js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
+                <a class="pager-link js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
               </div>
             </div>
           <?php endif; ?>
@@ -655,8 +661,8 @@ function outputWatermarked(string $path, string $mime): never
   <nav class="mobile-photo-nav" aria-label="Навигация по фото">
     <button class="mobile-nav-link js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
     <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
-    <a class="mobile-nav-link js-prev-photo<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $prevPhotoId < 1 ? 'true' : 'false' ?>">←</a>
-    <a class="mobile-nav-link js-next-photo<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $nextPhotoId < 1 ? 'true' : 'false' ?>">→</a>
+    <a class="mobile-nav-link js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="false">←</a>
+    <a class="mobile-nav-link js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="false">→</a>
   </nav>
 <?php elseif ($hasMobileCatalogNav): ?>
   <nav class="mobile-catalog-nav" aria-label="Навигация по каталогу">
