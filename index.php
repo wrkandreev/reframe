@@ -255,6 +255,21 @@ $catalogOverviewCountLabel = count($photos) . ' фото';
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
 function limitText(string $text, int $len): string { return function_exists('mb_substr') ? mb_substr($text, 0, $len) : substr($text, 0, $len); }
+function commentCountLabel(int $count): string
+{
+    $mod100 = $count % 100;
+    $mod10 = $count % 10;
+    if ($mod100 >= 11 && $mod100 <= 14) {
+        return $count . ' комментариев';
+    }
+    if ($mod10 === 1) {
+        return $count . ' комментарий';
+    }
+    if ($mod10 >= 2 && $mod10 <= 4) {
+        return $count . ' комментария';
+    }
+    return $count . ' комментариев';
+}
 
 function buildTopicTreePublic(array $topics): array
 {
@@ -595,8 +610,8 @@ function outputWatermarked(string $path, string $mime): never
                 <?php if ($hasAfterVersion || $detailCounterLabel !== '' || $detailCommentCount > 0): ?>
                   <div class="detail-frame-head">
                     <div class="detail-frame-head-left">
-                      <?php if ($detailCommentCount > 0): ?><div class="detail-label"><?= (int)$detailCommentCount ?> комментариев</div><?php endif; ?>
                       <?php if ($hasAfterVersion): ?><div class="detail-label">Есть улучшенная версия</div><?php endif; ?>
+                      <?php if ($detailCommentCount > 0): ?><div class="detail-label"><?= h(commentCountLabel($detailCommentCount)) ?></div><?php endif; ?>
                     </div>
                     <?php if ($detailCounterLabel !== ''): ?><div class="detail-label detail-position-label"><?= h($detailCounterLabel) ?></div><?php endif; ?>
                   </div>
