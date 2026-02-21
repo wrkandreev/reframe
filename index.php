@@ -246,6 +246,12 @@ if ($isTopicMode && $activeTopicName !== '') {
     $catalogLocationLabel = 'Раздел: ' . $sectionNames[$activeSectionId];
 }
 
+$showCatalogOverview = !$photo && ($isTopicMode || $isSectionMode);
+$catalogOverviewTitle = $isTopicMode
+    ? $activeTopicName
+    : ($isSectionMode && isset($sectionNames[$activeSectionId]) ? $sectionNames[$activeSectionId] : '');
+$catalogOverviewCountLabel = count($photos) . ' фото';
+
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
 function limitText(string $text, int $len): string { return function_exists('mb_substr') ? mb_substr($text, 0, $len) : substr($text, 0, $len); }
@@ -458,6 +464,9 @@ function outputWatermarked(string $path, string $mime): never
     .detail .stack{display:grid;gap:14px;grid-template-columns:1fr;margin:0 0 18px}
     .detail-frame{display:grid;gap:6px}
     .detail-frame-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .detail-frame-head-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .catalog-overview{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px}
+    .catalog-overview-count{margin-left:auto}
     .detail-label{font-size:12px;font-weight:600;color:#4b5563;line-height:1.35}
     .detail-position-label{margin-left:auto}
     .detail-title{margin:0 0 6px;font-size:24px;line-height:1.2}
@@ -579,12 +588,16 @@ function outputWatermarked(string $path, string $mime): never
       <?php if ($activePhotoId > 0 && $photo): ?>
         <section class="panel detail">
           <?php $hasAfterVersion = !empty($photo['after_file_id']); ?>
+          <?php $detailCommentCount = count($comments); ?>
           <div class="stack">
             <?php if (!empty($photo['before_file_id'])): ?>
               <div class="detail-frame">
-                <?php if ($hasAfterVersion || $detailCounterLabel !== ''): ?>
+                <?php if ($hasAfterVersion || $detailCounterLabel !== '' || $detailCommentCount > 0): ?>
                   <div class="detail-frame-head">
-                    <?php if ($hasAfterVersion): ?><div class="detail-label">До обработки</div><?php endif; ?>
+                    <div class="detail-frame-head-left">
+                      <?php if ($detailCommentCount > 0): ?><div class="detail-label"><?= (int)$detailCommentCount ?> комментариев</div><?php endif; ?>
+                      <?php if ($hasAfterVersion): ?><div class="detail-label">Есть улучшенная версия</div><?php endif; ?>
+                    </div>
                     <?php if ($detailCounterLabel !== ''): ?><div class="detail-label detail-position-label"><?= h($detailCounterLabel) ?></div><?php endif; ?>
                   </div>
                 <?php endif; ?>
@@ -647,6 +660,12 @@ function outputWatermarked(string $path, string $mime): never
         </section>
       <?php else: ?>
         <section class="panel">
+          <?php if ($showCatalogOverview && $catalogOverviewTitle !== ''): ?>
+            <div class="catalog-overview">
+              <div class="detail-label"><?= h($catalogOverviewTitle) ?></div>
+              <div class="detail-label catalog-overview-count"><?= h($catalogOverviewCountLabel) ?></div>
+            </div>
+          <?php endif; ?>
           <?php if ($activeSectionId < 1 && $activeTopicId < 1): ?>
             <p class="muted"><?= nl2br(h($welcomeText)) ?></p>
           <?php elseif ($photos === []): ?>
