@@ -366,11 +366,22 @@ function outputWatermarked(string $path, string $mime): never
     .card-badge.comments{background:rgba(3,105,161,.9)}
     .card img{width:100%;height:130px;object-fit:contain;object-position:center;background:#f8fafc}
     .cap{padding:8px;font-size:13px}
+    .detail{padding:18px}
     .detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}
-    .stack{display:grid;gap:12px;grid-template-columns:1fr}
-    .detail-meta{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
+    .detail .stack{display:grid;gap:14px;grid-template-columns:1fr;margin:0 0 18px}
+    .detail-frame{display:grid;gap:6px}
+    .detail-label{font-size:12px;font-weight:600;color:#4b5563;line-height:1.35}
+    .detail-title{margin:0 0 6px;font-size:24px;line-height:1.2}
+    .detail-meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
     .detail-meta-link{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #dbe3ef;background:#f8fbff;color:#1f3b7a;text-decoration:none;font-size:12px;line-height:1.25}
-    .cmt{border-top:1px solid #eee;padding:8px 0}
+    .detail-description{margin:0 0 10px;line-height:1.5;white-space:pre-wrap}
+    .detail-comments-title{margin:18px 0 10px;font-size:18px;line-height:1.3}
+    .comment-form{display:grid;gap:10px;margin-bottom:6px}
+    .comment-input{width:100%;min-height:94px;border:1px solid #d1d5db;border-radius:10px;padding:10px;line-height:1.45;resize:vertical}
+    .comment-input:focus{outline:0;border-color:#1f6feb;box-shadow:0 0 0 3px rgba(31,111,235,.16)}
+    .comment-actions{margin:0}
+    .cmt{border-top:1px solid #e8edf5;padding-top:10px;margin-top:10px;line-height:1.45}
+    .detail .cmt:first-of-type{border-top:0;margin-top:0;padding-top:0}
     .muted{color:#6b7280;font-size:13px}
     .pager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb}
     .pager-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -415,6 +426,8 @@ function outputWatermarked(string $path, string $mime): never
 
     @media (max-width:560px){
       .app{padding:14px}
+      .detail{padding:14px}
+      .detail-title{font-size:21px}
     }
   </style>
 </head>
@@ -473,30 +486,41 @@ function outputWatermarked(string $path, string $mime): never
     <main>
       <?php if ($activePhotoId > 0 && $photo): ?>
         <section class="panel detail">
+          <?php $hasAfterVersion = !empty($photo['after_file_id']); ?>
           <div class="stack">
-            <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
-            <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
+            <?php if (!empty($photo['before_file_id'])): ?>
+              <div class="detail-frame">
+                <?php if ($hasAfterVersion): ?><div class="detail-label">До обработки</div><?php endif; ?>
+                <div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div>
+              </div>
+            <?php endif; ?>
+            <?php if ($hasAfterVersion): ?>
+              <div class="detail-frame">
+                <div class="detail-label">После обработки</div>
+                <div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div>
+              </div>
+            <?php endif; ?>
           </div>
 
-          <h2><?= h((string)$photo['code_name']) ?></h2>
+          <h2 class="detail-title"><?= h((string)$photo['code_name']) ?></h2>
           <div class="detail-meta">
             <a class="detail-meta-link" href="?section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Раздел: <?= h($sectionNames[$detailSectionId] ?? ('#' . (string)$detailSectionId)) ?></a>
             <?php foreach($photoTopics as $topic): ?>
               <a class="detail-meta-link" href="?topic_id=<?= (int)$topic['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Тематика: <?= h((string)$topic['full_name']) ?></a>
             <?php endforeach; ?>
           </div>
-          <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
+          <p class="muted detail-description"><?= h((string)($photo['description'] ?? '')) ?></p>
 
-          <h3 style="margin-top:16px">Комментарии</h3>
+          <h3 class="detail-comments-title">Комментарии</h3>
           <?php if ($viewer): ?>
-            <form class="js-comment-form" method="post" action="?photo_id=<?= (int)$photo['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">
+            <form class="js-comment-form comment-form" method="post" action="?photo_id=<?= (int)$photo['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">
               <input type="hidden" name="action" value="add_comment">
               <input type="hidden" name="photo_id" value="<?= (int)$photo['id'] ?>">
               <input type="hidden" name="section_id" value="<?= $isSectionMode ? (int)$detailSectionId : 0 ?>">
               <input type="hidden" name="topic_id" value="<?= $isTopicMode ? (int)$activeTopicId : 0 ?>">
               <input type="hidden" name="viewer" value="<?= h($viewerToken) ?>">
-              <textarea class="js-comment-textarea" name="comment_text" required autofocus style="width:100%;min-height:80px;border:1px solid #d1d5db;border-radius:8px;padding:8px"></textarea>
-              <p><button class="btn" type="submit">Отправить</button></p>
+              <textarea class="js-comment-textarea comment-input" name="comment_text" required autofocus></textarea>
+              <p class="comment-actions"><button class="btn" type="submit">Отправить</button></p>
             </form>
           <?php else: ?>
             <p class="muted">Комментарии может оставлять только пользователь с персональной ссылкой.</p>
