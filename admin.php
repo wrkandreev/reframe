@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/db_gallery.php';
+require_once __DIR__ . '/lib/thumbs.php';
 
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
 
@@ -171,8 +172,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($_FILES['after']) && (int)($_FILES['after']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
                 $p = photoById($photoId);
                 if (!$p) throw new RuntimeException('Фото не найдено');
+                $oldAfterPath = (string)($p['after_path'] ?? '');
                 $up = saveSingleImage($_FILES['after'], $code . 'р', (int)$p['section_id']);
                 photoFileUpsert($photoId, 'after', $up['path'], $up['mime'], $up['size']);
+
+                if ($oldAfterPath !== '' && $oldAfterPath !== $up['path']) {
+                    deleteThumbBySourcePath(__DIR__, $oldAfterPath);
+                    $oldAbs = __DIR__ . '/' . ltrim($oldAfterPath, '/');
+                    if (is_file($oldAbs)) {
+                        @unlink($oldAbs);
+                    }
+                }
             }
 
             $message = 'Фото обновлено';
@@ -196,6 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             photoFileUpsert($photoId, 'after', $up['path'], $up['mime'], $up['size']);
 
             if ($oldAfterPath !== '' && $oldAfterPath !== $up['path']) {
+                deleteThumbBySourcePath(__DIR__, $oldAfterPath);
                 $oldAbs = __DIR__ . '/' . ltrim($oldAfterPath, '/');
                 if (is_file($oldAbs)) {
                     @unlink($oldAbs);
@@ -266,6 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($p) {
                     foreach (['before_path', 'after_path'] as $k) {
                         if (!empty($p[$k])) {
+                            deleteThumbBySourcePath(__DIR__, (string)$p[$k]);
                             $abs = __DIR__ . '/' . ltrim((string)$p[$k], '/');
                             if (is_file($abs)) @unlink($abs);
                         }
@@ -296,6 +308,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $degrees = $direction === 'left' ? -90 : 90;
             rotateImageOnDisk($absPath, $degrees);
+            ensureThumbForSource(__DIR__, $relPath);
 
             $st = db()->prepare('UPDATE photo_files SET updated_at=CURRENT_TIMESTAMP WHERE photo_id=:pid AND kind=:kind');
             $st->execute(['pid' => $photoId, 'kind' => $kind]);
@@ -541,8 +554,11 @@ function saveSingleImage(array $file, string $baseName, int $sectionId): array
 
     if (!move_uploaded_file($tmp, $dest)) throw new RuntimeException('Не удалось сохранить файл');
 
+    $storedRelPath = 'photos/section_' . $sectionId . '/' . $name;
+    ensureThumbForSource(__DIR__, $storedRelPath);
+
     return [
-        'path' => 'photos/section_' . $sectionId . '/' . $name,
+        'path' => $storedRelPath,
         'mime' => $mime,
         'size' => $size,
     ];
@@ -613,6 +629,7 @@ function removeSectionImageFiles(int $sectionId): void
         if (is_file($abs)) {
             @unlink($abs);
         }
+        deleteThumbBySourcePath(__DIR__, $path);
     }
 }
 
