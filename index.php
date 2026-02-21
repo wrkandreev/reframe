@@ -255,6 +255,33 @@ $catalogOverviewCountLabel = count($photos) . ' фото';
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
 function limitText(string $text, int $len): string { return function_exists('mb_substr') ? mb_substr($text, 0, $len) : substr($text, 0, $len); }
+function imageIntrinsicSize(int $fileId): array
+{
+    if ($fileId < 1) {
+        return ['width' => 0, 'height' => 0];
+    }
+
+    $file = photoFileById($fileId);
+    if (!$file) {
+        return ['width' => 0, 'height' => 0];
+    }
+
+    $path = __DIR__ . '/' . ltrim((string)$file['file_path'], '/');
+    if (!is_file($path)) {
+        return ['width' => 0, 'height' => 0];
+    }
+
+    $size = @getimagesize($path);
+    if (!is_array($size)) {
+        return ['width' => 0, 'height' => 0];
+    }
+
+    return [
+        'width' => max(0, (int)($size[0] ?? 0)),
+        'height' => max(0, (int)($size[1] ?? 0)),
+    ];
+}
+
 function commentCountLabel(int $count): string
 {
     $mod100 = $count % 100;
@@ -510,7 +537,7 @@ function outputWatermarked(string $path, string $mime): never
     .img-box img{display:block;position:relative;z-index:1}
     .thumb-img-box{height:130px}
     .detail .img-box{min-height:200px;border-radius:10px;border:1px solid #e5e7eb}
-    .detail .img-box img{max-width:100%;height:auto;border:0;border-radius:0}
+    .detail .img-box img{width:100%;height:auto;border:0;border-radius:0}
     @keyframes skeleton{to{background-position:-200% 0}}
     .sidebar-head{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:6px}
     .sidebar-toggle{display:none}
@@ -604,6 +631,8 @@ function outputWatermarked(string $path, string $mime): never
         <section class="panel detail">
           <?php $hasAfterVersion = !empty($photo['after_file_id']); ?>
           <?php $detailCommentCount = count($comments); ?>
+          <?php $beforeImageSize = !empty($photo['before_file_id']) ? imageIntrinsicSize((int)$photo['before_file_id']) : ['width' => 0, 'height' => 0]; ?>
+          <?php $afterImageSize = $hasAfterVersion ? imageIntrinsicSize((int)$photo['after_file_id']) : ['width' => 0, 'height' => 0]; ?>
           <div class="stack">
             <?php if (!empty($photo['before_file_id'])): ?>
               <div class="detail-frame">
@@ -616,7 +645,7 @@ function outputWatermarked(string $path, string $mime): never
                     <?php if ($detailCounterLabel !== ''): ?><div class="detail-label detail-position-label"><?= h($detailCounterLabel) ?></div><?php endif; ?>
                   </div>
                 <?php endif; ?>
-                <div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div>
+                <div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"<?= $beforeImageSize['width'] > 0 && $beforeImageSize['height'] > 0 ? ' width="' . (int)$beforeImageSize['width'] . '" height="' . (int)$beforeImageSize['height'] . '"' : '' ?>></div>
               </div>
             <?php endif; ?>
             <?php if ($hasAfterVersion): ?>
@@ -629,7 +658,7 @@ function outputWatermarked(string $path, string $mime): never
                     <?php if ($detailCounterLabel !== ''): ?><div class="detail-label detail-position-label"><?= h($detailCounterLabel) ?></div><?php endif; ?>
                   </div>
                 <?php endif; ?>
-                <div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div>
+                <div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"<?= $afterImageSize['width'] > 0 && $afterImageSize['height'] > 0 ? ' width="' . (int)$afterImageSize['width'] . '" height="' . (int)$afterImageSize['height'] . '"' : '' ?>></div>
               </div>
             <?php endif; ?>
           </div>
