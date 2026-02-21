@@ -213,9 +213,37 @@ if (!in_array($adminMode, ['sections', 'photos', 'comments', 'welcome'], true)) 
     $adminMode = 'photos';
 }
 $previewVersion = (string)time();
+$commentPhotoId = (int)($_GET['comment_photo_id'] ?? ($_POST['comment_photo_id'] ?? 0));
+if ($commentPhotoId < 0) {
+    $commentPhotoId = 0;
+}
+$selectedCommentPhoto = $commentPhotoId > 0 ? photoById($commentPhotoId) : null;
+if (!$selectedCommentPhoto) {
+    $commentPhotoId = 0;
+}
+$photoComments = $commentPhotoId > 0 ? commentsByPhoto($commentPhotoId) : [];
+$photoCommentCounts = commentCountsByPhotoIds(array_map(static fn(array $p): int => (int)$p['id'], $photos));
 
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
+
+function commentCountsByPhotoIds(array $photoIds): array
+{
+    $photoIds = array_values(array_unique(array_map('intval', $photoIds)));
+    if ($photoIds === []) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($photoIds), '?'));
+    $st = db()->prepare("SELECT photo_id, COUNT(*) AS cnt FROM photo_comments WHERE photo_id IN ($placeholders) GROUP BY photo_id");
+    $st->execute($photoIds);
+
+    $map = [];
+    foreach ($st->fetchAll() as $row) {
+        $map[(int)$row['photo_id']] = (int)$row['cnt'];
+    }
+    return $map;
+}
 
 function saveBulkBefore(array $files, int $sectionId): array
 {
@@ -564,6 +592,7 @@ function nextUniqueCodeName(string $base): string
         <table class="tbl">
           <tr><th>До</th><th>После</th><th>Поля</th><th>Действия</th></tr>
           <?php foreach($photos as $p): ?>
+            <?php $photoCommentCount = (int)($photoCommentCounts[(int)$p['id']] ?? 0); ?>
             <tr>
               <td>
                 <?php if (!empty($p['before_file_id'])): ?>
@@ -600,12 +629,17 @@ function nextUniqueCodeName(string $base): string
                   <input type="hidden" name="action" value="photo_update"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <p><input class="in" name="code_name" value="<?= h((string)$p['code_name']) ?>"></p>
                   <p><input class="in" type="number" name="sort_order" value="<?= (int)$p['sort_order'] ?>"></p>
-                  <p><textarea class="in" name="description" placeholder="Комментарий"><?= h((string)($p['description'] ?? '')) ?></textarea></p>
+                  <p><label class="small" for="descr-<?= (int)$p['id'] ?>">Описание фотографии</label><textarea id="descr-<?= (int)$p['id'] ?>" class="in" name="description" placeholder="Описание фотографии"><?= h((string)($p['description'] ?? '')) ?></textarea></p>
                   <p class="small">Фото после (опционально): <input type="file" name="after" accept="image/jpeg,image/png,image/webp,image/gif"></p>
                   <div class="small js-save-status">Сохраняется автоматически при выходе из карточки.</div>
                 </form>
               </td>
               <td>
+                <?php if ($photoCommentCount > 0): ?>
+                  <p><a class="btn btn-secondary btn-xs" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments&comment_photo_id=<?= (int)$p['id'] ?>&section_id=<?= (int)$activeSectionId ?>">Комментарии (<?= $photoCommentCount ?>)</a></p>
+                <?php else: ?>
+                  <p class="small">Комментариев нет</p>
+                <?php endif; ?>
                 <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos" onsubmit="return confirm('Удалить фото?')">
                   <input type="hidden" name="action" value="photo_delete"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <button class="btn btn-danger" type="submit">Удалить</button>
@@ -643,21 +677,45 @@ function nextUniqueCodeName(string $base): string
           <?php endforeach; ?>
         </table>
         <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
-        <table class="tbl"><tr><th>Фото</th><th>Пользователь</th><th>Комментарий</th><th></th></tr>
-          <?php foreach($latestComments as $c): ?>
-            <tr>
-              <td><?= h((string)$c['code_name']) ?></td>
-              <td><?= h((string)($c['display_name'] ?? '—')) ?></td>
-              <td><?= h((string)$c['comment_text']) ?></td>
-              <td>
-                <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить комментарий?')">
-                  <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                  <button class="btn btn-danger" type="submit">Удалить</button>
-                </form>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        </table>
+        <?php if ($commentPhotoId > 0 && $selectedCommentPhoto): ?>
+          <h4 style="margin:0 0 10px">Комментарии к фото: <?= h((string)$selectedCommentPhoto['code_name']) ?></h4>
+          <?php if ($photoComments === []): ?>
+            <p class="small">К этой карточке комментариев пока нет.</p>
+          <?php else: ?>
+            <table class="tbl"><tr><th>Пользователь</th><th>Комментарий</th><th>Дата</th><th></th></tr>
+              <?php foreach($photoComments as $c): ?>
+                <tr>
+                  <td><?= h((string)($c['display_name'] ?? '—')) ?></td>
+                  <td><?= nl2br(h((string)$c['comment_text'])) ?></td>
+                  <td><?= h((string)$c['created_at']) ?></td>
+                  <td>
+                    <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments&comment_photo_id=<?= (int)$commentPhotoId ?>" onsubmit="return confirm('Удалить комментарий?')">
+                      <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><input type="hidden" name="comment_photo_id" value="<?= (int)$commentPhotoId ?>">
+                      <button class="btn btn-danger" type="submit">Удалить</button>
+                    </form>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </table>
+          <?php endif; ?>
+          <p style="margin-top:10px"><a href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Показать все последние комментарии</a></p>
+        <?php else: ?>
+          <table class="tbl"><tr><th>Фото</th><th>Пользователь</th><th>Комментарий</th><th></th></tr>
+            <?php foreach($latestComments as $c): ?>
+              <tr>
+                <td><?= h((string)$c['code_name']) ?></td>
+                <td><?= h((string)($c['display_name'] ?? '—')) ?></td>
+                <td><?= h((string)$c['comment_text']) ?></td>
+                <td>
+                  <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить комментарий?')">
+                    <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                    <button class="btn btn-danger" type="submit">Удалить</button>
+                  </form>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </table>
+        <?php endif; ?>
       </section>
       <?php endif; ?>
     </main>
