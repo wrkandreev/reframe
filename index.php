@@ -563,7 +563,7 @@ function outputWatermarked(string $path, string $mime): never
               <input type="hidden" name="section_id" value="<?= $isSectionMode ? (int)$detailSectionId : 0 ?>">
               <input type="hidden" name="topic_id" value="<?= $isTopicMode ? (int)$activeTopicId : 0 ?>">
               <input type="hidden" name="viewer" value="<?= h($viewerToken) ?>">
-              <textarea class="js-comment-textarea comment-input" name="comment_text" required autofocus></textarea>
+              <textarea class="js-comment-textarea comment-input" name="comment_text" required></textarea>
               <p class="comment-actions"><button class="btn" type="submit">Отправить</button></p>
             </form>
           <?php else: ?>
@@ -764,11 +764,6 @@ function outputWatermarked(string $path, string $mime): never
   const commentTextarea = document.querySelector('.js-comment-textarea');
   const commentForm = commentTextarea ? commentTextarea.closest('.js-comment-form') : null;
   if (commentTextarea) {
-    requestAnimationFrame(() => {
-      commentTextarea.focus();
-      commentTextarea.setSelectionRange(commentTextarea.value.length, commentTextarea.value.length);
-    });
-
     commentTextarea.addEventListener('keydown', (e) => {
       if (!e.shiftKey || e.key !== 'Enter' || e.isComposing) {
         return;

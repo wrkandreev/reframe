@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'update_welcome') {
             $text = trim((string)($_POST['welcome_text'] ?? ''));
             settingSet('welcome_text', $text);
-            $message = 'Приветственное сообщение сохранено';
+            $message = 'Настройки сохранены';
         }
 
         if ($action === 'upload_before_bulk') {
@@ -794,17 +794,17 @@ function nextUniqueCodeName(string $base): string
         <h3>Меню</h3>
         <div class="sec">
           <a class="<?= $adminMode==='sections'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=sections<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Разделы</a>
-          <a class="<?= $adminMode==='photos'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Фото</a>
           <a class="<?= $adminMode==='topics'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=topics">Тематики</a>
-          <a class="<?= $adminMode==='welcome'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">Приветственное сообщение</a>
-          <a class="<?= $adminMode==='commenters'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">Пользователи комментариев</a>
+          <a class="<?= $adminMode==='photos'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos<?= $activeSectionId>0 ? '&section_id='.(int)$activeSectionId : '' ?>">Фото</a>
+          <a class="<?= $adminMode==='commenters'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">Пользователи</a>
           <a class="<?= $adminMode==='comments'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=comments">Комментарии</a>
+          <a class="<?= $adminMode==='welcome'?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">Настройки</a>
         </div>
       </section>
 
       <?php if ($adminMode === 'sections' || $adminMode === 'photos'): ?>
       <section class="card">
-        <h3><?= $adminMode === 'sections' ? 'Разделы' : 'Выбор раздела для фото' ?></h3>
+        <h3>Разделы</h3>
         <div class="sec">
           <?php foreach($sections as $s): ?>
             <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?token=<?= urlencode($tokenIncoming) ?>&mode=<?= h($adminMode) ?>&section_id=<?= (int)$s['id'] ?>"><?= h((string)$s['name']) ?> <span class="small">(<?= (int)$s['photos_count'] ?>)</span></a>
@@ -834,11 +834,11 @@ function nextUniqueCodeName(string $base): string
     <main>
       <?php if ($adminMode === 'welcome'): ?>
       <section class="card">
-        <h3>Приветственное сообщение (публичная часть)</h3>
+        <h3>Настройки</h3>
         <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">
           <input type="hidden" name="action" value="update_welcome"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
           <p><textarea class="in" name="welcome_text" rows="5" placeholder="Текст приветствия"><?= h($welcomeText) ?></textarea></p>
-          <button class="btn" type="submit">Сохранить приветствие</button>
+          <button class="btn" type="submit">Сохранить настройки</button>
         </form>
       </section>
       <?php endif; ?>
