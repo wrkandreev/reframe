@@ -65,6 +65,7 @@ $topics = [];
 $topicCounts = [];
 $topicTree = [];
 $hasVisibleTopics = false;
+$visibleTopicTree = [];
 try {
     $topics = topicsAllForSelect();
     if ($activeTopicId > 0) {
@@ -75,12 +76,27 @@ try {
     }
     $topicCounts = topicPhotoCounts(null);
     $topicTree = buildTopicTreePublic($topics);
-    foreach ($topics as $topicItem) {
-        if ((int)($topicCounts[(int)$topicItem['id']] ?? 0) > 0) {
-            $hasVisibleTopics = true;
-            break;
+    foreach ($topicTree as $root) {
+        $rootCount = (int)($topicCounts[(int)$root['id']] ?? 0);
+        $visibleChildren = [];
+        foreach (($root['children'] ?? []) as $child) {
+            $childCount = (int)($topicCounts[(int)$child['id']] ?? 0);
+            if ($childCount < 1) {
+                continue;
+            }
+            $child['visible_count'] = $childCount;
+            $visibleChildren[] = $child;
         }
+
+        if ($rootCount < 1 && $visibleChildren === []) {
+            continue;
+        }
+
+        $root['visible_count'] = $rootCount;
+        $root['children'] = $visibleChildren;
+        $visibleTopicTree[] = $root;
     }
+    $hasVisibleTopics = $visibleTopicTree !== [];
 } catch (Throwable) {
     $topics = [];
     $topicCounts = [];
@@ -88,6 +104,7 @@ try {
     $activeTopicId = 0;
     $filterMode = $activeSectionId > 0 ? 'section' : 'none';
     $hasVisibleTopics = false;
+    $visibleTopicTree = [];
 }
 
 $photos = ($activeSectionId > 0 || $activeTopicId > 0)
@@ -383,7 +400,7 @@ function outputWatermarked(string $path, string $mime): never
 
       .has-mobile-nav .app{padding-bottom:84px}
       .mobile-photo-nav,.mobile-catalog-nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);backdrop-filter:blur(6px);border-top:1px solid #e5e7eb}
-      .mobile-photo-nav{grid-template-columns:auto auto 1fr auto auto}
+      .mobile-photo-nav{grid-template-columns:auto 1fr auto auto}
       .mobile-catalog-nav{grid-template-columns:auto 1fr}
       .mobile-nav-link{padding:8px 10px;font-size:13px}
 
@@ -430,25 +447,18 @@ function outputWatermarked(string $path, string $mime): never
         </details>
       <?php endif; ?>
 
-      <?php if ($topicTree !== [] && $hasVisibleTopics): ?>
+      <?php if ($visibleTopicTree !== [] && $hasVisibleTopics): ?>
         <details class="nav-group" open>
           <summary class="nav-summary">Тематики</summary>
           <div class="nav-list">
-            <?php foreach($topicTree as $root): ?>
-              <?php $rootCount = (int)($topicCounts[(int)$root['id']] ?? 0); ?>
-              <?php $visibleChildren = []; ?>
-              <?php foreach(($root['children'] ?? []) as $child): ?>
-                <?php $childCount = (int)($topicCounts[(int)$child['id']] ?? 0); ?>
-                <?php if ($childCount < 1) continue; ?>
-                <?php $visibleChildren[] = ['topic' => $child, 'count' => $childCount]; ?>
-              <?php endforeach; ?>
-
+            <?php foreach($visibleTopicTree as $root): ?>
+              <?php $rootCount = (int)($root['visible_count'] ?? 0); ?>
               <?php if ($rootCount > 0): ?>
                 <a class="nav-link<?= $isTopicMode && (int)$root['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$root['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$root['name']) ?> <span class="muted">(<?= $rootCount ?>)</span></a>
               <?php endif; ?>
 
-              <?php foreach($visibleChildren as $row): ?>
-                <?php $child = $row['topic']; $childCount = (int)$row['count']; ?>
+              <?php foreach(($root['children'] ?? []) as $child): ?>
+                <?php $childCount = (int)($child['visible_count'] ?? 0); ?>
                 <a class="nav-link<?= $rootCount > 0 ? ' level-1' : '' ?><?= $isTopicMode && (int)$child['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$child['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$child['name']) ?> <span class="muted">(<?= $childCount ?>)</span></a>
               <?php endforeach; ?>
             <?php endforeach; ?>
@@ -537,7 +547,6 @@ function outputWatermarked(string $path, string $mime): never
 <?php if ($hasMobilePhotoNav): ?>
   <nav class="mobile-photo-nav" aria-label="Навигация по фото">
     <button class="mobile-nav-link js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
-    <a class="mobile-nav-link" href="?<?= $isTopicMode ? 'topic_id=' . $activeTopicId : 'section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= $isTopicMode ? 'К тематике' : 'К разделу' ?></a>
     <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
     <a class="mobile-nav-link js-prev-photo<?= $prevPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$prevPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $prevPhotoId < 1 ? 'true' : 'false' ?>">←</a>
     <a class="mobile-nav-link js-next-photo<?= $nextPhotoId < 1 ? ' disabled' : '' ?>" href="?photo_id=<?= (int)$nextPhotoId ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="<?= $nextPhotoId < 1 ? 'true' : 'false' ?>">→</a>
