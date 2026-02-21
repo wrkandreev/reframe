@@ -184,7 +184,8 @@ function outputWatermarked(string $path, string $mime): never
     .page{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr)}
     .panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}
     .sidebar{position:sticky;top:14px;align-self:start;max-height:calc(100dvh - 28px);overflow:auto}
-    .sec a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111}
+    .sec{display:grid;gap:6px}
+    .sec a{display:block;padding:10px 12px;border-radius:10px;line-height:1.35;text-decoration:none;color:#111}
     .sec a.active{background:#eef4ff;color:#1f6feb}
     .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
     .card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
@@ -267,7 +268,6 @@ function outputWatermarked(string $path, string $mime): never
     <main>
       <?php if ($activePhotoId > 0 && $photo): ?>
         <section class="panel detail">
-          <p><a href="?section_id=<?= (int)$photo['section_id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← к разделу</a></p>
           <h2><?= h((string)$photo['code_name']) ?></h2>
           <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
           <div class="stack">

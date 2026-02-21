@@ -134,6 +134,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        if ($action === 'upload_after_file') {
+            $photoId = (int)($_POST['photo_id'] ?? 0);
+            if ($photoId < 1) throw new RuntimeException('Некорректный photo_id');
+            if (!isset($_FILES['after'])) throw new RuntimeException('Файл не передан');
+
+            $photo = photoById($photoId);
+            if (!$photo) throw new RuntimeException('Фото не найдено');
+
+            $oldAfterPath = (string)($photo['after_path'] ?? '');
+            $up = saveSingleImage($_FILES['after'], (string)$photo['code_name'] . 'р', (int)$photo['section_id']);
+            photoFileUpsert($photoId, 'after', $up['path'], $up['mime'], $up['size']);
+
+            if ($oldAfterPath !== '' && $oldAfterPath !== $up['path']) {
+                $oldAbs = __DIR__ . '/' . ltrim($oldAfterPath, '/');
+                if (is_file($oldAbs)) {
+                    @unlink($oldAbs);
+                }
+            }
+
+            $updatedPhoto = photoById($photoId);
+            $afterFileId = (int)($updatedPhoto['after_file_id'] ?? 0);
+            $previewUrl = $afterFileId > 0 ? ('index.php?action=image&file_id=' . $afterFileId . '&v=' . rawurlencode((string)time())) : '';
+
+            $message = 'Фото после обновлено';
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'message' => $message,
+                    'photo_id' => $photoId,
+                    'preview_url' => $previewUrl,
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+        }
+
         if ($action === 'photo_delete') {
             $photoId = (int)($_POST['photo_id'] ?? 0);
             if ($photoId > 0) {
@@ -558,8 +594,10 @@ function nextUniqueCodeName(string $base): string
     .sec a.active{background:#eef4ff;color:#1f6feb}
     .small{font-size:12px;color:#667085}
     .inline-form{margin:0}
+    .after-slot{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
     .preview-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:nowrap}
     .preview-actions form{margin:0}
+    .is-hidden{display:none}
     .row-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
     .modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px}
     .modal[hidden]{display:none}
@@ -644,7 +682,7 @@ function nextUniqueCodeName(string $base): string
             <input type="hidden" name="action" value="update_section"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
             <p><input class="in" name="name" value="<?= h((string)$activeSection['name']) ?>" required></p>
             <p><input class="in" type="number" name="sort_order" value="<?= (int)$activeSection['sort_order'] ?>"></p>
-            <div class="small js-save-status">Сохраняется автоматически при выходе из поля.</div>
+            <div class="small js-save-status"></div>
           </form>
           <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections" onsubmit="return confirmSectionDelete()" style="margin-top:8px">
             <input type="hidden" name="action" value="delete_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
@@ -705,9 +743,14 @@ function nextUniqueCodeName(string $base): string
                 <?php endif; ?>
               </td>
               <td>
-                <?php if (!empty($p['after_file_id'])): ?>
-                  <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="after" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
-                  <div class="preview-actions">
+                <div class="after-slot js-after-slot" data-photo-id="<?= (int)$p['id'] ?>">
+                  <?php if (!empty($p['after_file_id'])): ?>
+                    <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="after" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
+                  <?php else: ?>
+                    <div class="small js-after-empty">Фото после не загружено</div>
+                  <?php endif; ?>
+
+                  <div class="preview-actions js-after-rotate<?= empty($p['after_file_id']) ? ' is-hidden' : '' ?>">
                     <form class="inline-form js-rotate-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                       <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="after"><input type="hidden" name="direction" value="left">
                       <button class="btn btn-secondary btn-xs" type="submit">↺ 90°</button>
@@ -717,7 +760,13 @@ function nextUniqueCodeName(string $base): string
                       <button class="btn btn-secondary btn-xs" type="submit">↻ 90°</button>
                     </form>
                   </div>
-                <?php endif; ?>
+
+                  <form class="inline-form js-after-upload-form" method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
+                    <input type="hidden" name="action" value="upload_after_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="ajax" value="1">
+                    <input class="js-after-file-input" type="file" name="after" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
+                    <button class="btn btn-secondary btn-xs js-after-pick" type="button"><?= empty($p['after_file_id']) ? 'Загрузить фото после' : 'Изменить фото' ?></button>
+                  </form>
+                </div>
               </td>
               <td>
                 <form class="js-photo-form" method="post" enctype="multipart/form-data" action="admin.php?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
@@ -725,8 +774,7 @@ function nextUniqueCodeName(string $base): string
                   <p><input class="in" name="code_name" value="<?= h((string)$p['code_name']) ?>"></p>
                   <p><input class="in" type="number" name="sort_order" value="<?= (int)$p['sort_order'] ?>"></p>
                   <p><label class="small" for="descr-<?= (int)$p['id'] ?>">Описание фотографии</label><textarea id="descr-<?= (int)$p['id'] ?>" class="in" name="description" placeholder="Описание фотографии"><?= h((string)($p['description'] ?? '')) ?></textarea></p>
-                  <p class="small">Фото после (опционально): <input type="file" name="after" accept="image/jpeg,image/png,image/webp,image/gif"></p>
-                  <div class="small js-save-status">Сохраняется автоматически при выходе из карточки.</div>
+                  <div class="small js-save-status"></div>
                 </form>
               </td>
               <td>
@@ -960,6 +1008,46 @@ function nextUniqueCodeName(string $base): string
     });
   };
 
+  const upsertAfterPreview = (photoId, previewUrl) => {
+    const slot = document.querySelector(`.js-after-slot[data-photo-id="${photoId}"]`);
+    if (!slot) {
+      return;
+    }
+
+    const rotateGroup = slot.querySelector('.js-after-rotate');
+    if (rotateGroup) {
+      rotateGroup.classList.remove('is-hidden');
+    }
+
+    const emptyHint = slot.querySelector('.js-after-empty');
+    if (emptyHint) {
+      emptyHint.remove();
+    }
+
+    let imgEl = slot.querySelector('.js-preview-image[data-kind="after"]');
+    if (!imgEl) {
+      imgEl = document.createElement('img');
+      imgEl.className = 'js-open js-preview-image';
+      imgEl.dataset.photoId = String(photoId);
+      imgEl.dataset.kind = 'after';
+      imgEl.style.cursor = 'zoom-in';
+      imgEl.style.width = '100px';
+      imgEl.style.height = '70px';
+      imgEl.style.objectFit = 'cover';
+      imgEl.style.border = '1px solid #e5e7eb';
+      imgEl.style.borderRadius = '6px';
+      slot.prepend(imgEl);
+    }
+
+    imgEl.src = previewUrl;
+    imgEl.dataset.full = previewUrl;
+
+    const pickBtn = slot.querySelector('.js-after-pick');
+    if (pickBtn) {
+      pickBtn.textContent = 'Изменить фото';
+    }
+  };
+
   document.querySelectorAll('.js-rotate-form').forEach((form) => {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1011,6 +1099,77 @@ function nextUniqueCodeName(string $base): string
         buttons.forEach((btn) => {
           btn.disabled = false;
         });
+      }
+    });
+  });
+
+  document.querySelectorAll('.js-after-upload-form').forEach((form) => {
+    const fileInput = form.querySelector('.js-after-file-input');
+    const pickBtn = form.querySelector('.js-after-pick');
+    if (!fileInput || !pickBtn) {
+      return;
+    }
+
+    pickBtn.addEventListener('click', () => {
+      if (form.dataset.busy === '1') {
+        return;
+      }
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async () => {
+      if (!fileInput.files || fileInput.files.length === 0) {
+        return;
+      }
+
+      if (form.dataset.busy === '1') {
+        return;
+      }
+
+      form.dataset.busy = '1';
+      pickBtn.disabled = true;
+      const previousText = pickBtn.textContent;
+      pickBtn.textContent = 'Загрузка...';
+      let uploaded = false;
+
+      const fd = new FormData(form);
+      fd.set('ajax', '1');
+
+      try {
+        const endpoint = form.getAttribute('action') || window.location.href;
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          body: fd,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+          },
+        });
+
+        const raw = await r.text();
+        let j = null;
+        try {
+          j = JSON.parse(raw);
+        } catch {
+          throw new Error(raw.slice(0, 180) || 'Некорректный ответ сервера');
+        }
+
+        if (!r.ok || !j.ok) {
+          throw new Error(j?.message || 'Ошибка загрузки');
+        }
+
+        const photoId = Number(fd.get('photo_id') || 0);
+        if (photoId > 0 && j.preview_url) {
+          upsertAfterPreview(photoId, j.preview_url);
+          uploaded = true;
+        }
+      } catch (err) {
+        alert('Не удалось загрузить фото после: ' + (err?.message || 'unknown'));
+      } finally {
+        form.dataset.busy = '0';
+        pickBtn.disabled = false;
+        pickBtn.textContent = uploaded ? 'Изменить фото' : (previousText || 'Изменить фото');
+        fileInput.value = '';
       }
     });
   });
@@ -1181,15 +1340,18 @@ function nextUniqueCodeName(string $base): string
   const lightbox = document.getElementById('lightbox');
   const img = document.getElementById('lightboxImage');
   if (lightbox && img) {
-    document.querySelectorAll('.js-open').forEach((el) => {
-      el.addEventListener('click', () => {
-        const src = el.getAttribute('data-full');
-        if (!src) return;
-        img.src = src;
-        lightbox.hidden = false;
-        document.body.style.overflow = 'hidden';
-      });
+    document.addEventListener('click', (e) => {
+      const openEl = e.target.closest('.js-open');
+      if (!openEl) {
+        return;
+      }
+      const src = openEl.getAttribute('data-full');
+      if (!src) return;
+      img.src = src;
+      lightbox.hidden = false;
+      document.body.style.overflow = 'hidden';
     });
+
     lightbox.querySelectorAll('.js-close').forEach((el) => el.addEventListener('click', () => {
       lightbox.hidden = true; img.src = ''; document.body.style.overflow = '';
     }));
