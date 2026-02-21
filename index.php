@@ -343,7 +343,7 @@ function outputWatermarked(string $path, string $mime): never
   <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
   <style>
     .note{color:#6b7280;font-size:13px}
-    .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .topbar{display:none;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
     .topbar h1{margin:0;font-size:24px;line-height:1.2}
     .page{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr)}
     .panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}
@@ -393,6 +393,7 @@ function outputWatermarked(string $path, string $mime): never
     .sidebar-backdrop{display:none}
 
     @media (max-width:900px){
+      .topbar{display:flex}
       .topbar h1{font-size:22px}
       .page{grid-template-columns:1fr}
       .sidebar{position:static;max-height:none}
@@ -472,18 +473,19 @@ function outputWatermarked(string $path, string $mime): never
     <main>
       <?php if ($activePhotoId > 0 && $photo): ?>
         <section class="panel detail">
+          <div class="stack">
+            <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
+            <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
+          </div>
+
           <h2><?= h((string)$photo['code_name']) ?></h2>
-          <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
           <div class="detail-meta">
             <a class="detail-meta-link" href="?section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Раздел: <?= h($sectionNames[$detailSectionId] ?? ('#' . (string)$detailSectionId)) ?></a>
             <?php foreach($photoTopics as $topic): ?>
               <a class="detail-meta-link" href="?topic_id=<?= (int)$topic['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Тематика: <?= h((string)$topic['full_name']) ?></a>
             <?php endforeach; ?>
           </div>
-          <div class="stack">
-            <?php if (!empty($photo['before_file_id'])): ?><div><div class="muted">До обработки</div><div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['before_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
-            <?php if (!empty($photo['after_file_id'])): ?><div><div class="muted">После обработки (watermark)</div><div class="img-box"><img src="?action=image&file_id=<?= (int)$photo['after_file_id'] ?>" alt="" decoding="async" fetchpriority="high"></div></div><?php endif; ?>
-          </div>
+          <p class="muted"><?= h((string)($photo['description'] ?? '')) ?></p>
 
           <h3 style="margin-top:16px">Комментарии</h3>
           <?php if ($viewer): ?>
