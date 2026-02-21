@@ -140,9 +140,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Раздел удалён';
         }
 
-        if ($action === 'update_welcome') {
+        if ($action === 'update_settings' || $action === 'update_welcome') {
             $text = trim((string)($_POST['welcome_text'] ?? ''));
+            $wmText = trim((string)($_POST['watermark_text'] ?? 'photo.andr33v.ru'));
+            $wmBrightness = (int)($_POST['watermark_brightness'] ?? 35);
+            $wmAngle = (int)($_POST['watermark_angle'] ?? -28);
+
+            if ($wmText === '') {
+                $wmText = 'photo.andr33v.ru';
+            }
+            $wmBrightness = max(5, min(100, $wmBrightness));
+            $wmAngle = max(-75, min(75, $wmAngle));
+
             settingSet('welcome_text', $text);
+            settingSet('watermark_text', $wmText);
+            settingSet('watermark_brightness', (string)$wmBrightness);
+            settingSet('watermark_angle', (string)$wmAngle);
             $message = 'Настройки сохранены';
         }
 
@@ -379,6 +392,9 @@ if (!$activeSection && $sections !== []) {
 $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 $commenters = commentersAll();
 $welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
+$watermarkText = settingGet('watermark_text', 'photo.andr33v.ru');
+$watermarkBrightness = max(5, min(100, (int)settingGet('watermark_brightness', '35')));
+$watermarkAngle = max(-75, min(75, (int)settingGet('watermark_angle', '-28')));
 $adminMode = (string)($_GET['mode'] ?? 'photos');
 if ($adminMode === 'media') {
     $adminMode = 'photos';
@@ -851,8 +867,19 @@ function nextUniqueCodeName(string $base): string
       <section class="card">
         <h3>Настройки</h3>
         <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=welcome">
-          <input type="hidden" name="action" value="update_welcome"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+          <input type="hidden" name="action" value="update_settings"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
           <p><textarea class="in" name="welcome_text" rows="5" placeholder="Текст приветствия"><?= h($welcomeText) ?></textarea></p>
+          <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
+          <h4 style="margin:0 0 8px">Водяной знак (фото "после")</h4>
+          <p><input class="in" name="watermark_text" value="<?= h($watermarkText) ?>" placeholder="Текст водяного знака" maxlength="80"></p>
+          <p>
+            <label class="small" for="wm-brightness">Яркость: <?= (int)$watermarkBrightness ?>%</label>
+            <input id="wm-brightness" class="in" type="number" name="watermark_brightness" min="5" max="100" value="<?= (int)$watermarkBrightness ?>">
+          </p>
+          <p>
+            <label class="small" for="wm-angle">Наклон линий (-75..75)</label>
+            <input id="wm-angle" class="in" type="number" name="watermark_angle" min="-75" max="75" value="<?= (int)$watermarkAngle ?>">
+          </p>
           <button class="btn" type="submit">Сохранить настройки</button>
         </form>
       </section>
@@ -1043,16 +1070,13 @@ function nextUniqueCodeName(string $base): string
                   <input type="hidden" name="action" value="photo_update"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
                   <p><input class="in" name="code_name" value="<?= h((string)$p['code_name']) ?>"></p>
                   <p><input class="in" type="number" name="sort_order" value="<?= (int)$p['sort_order'] ?>"></p>
-                  <p><label class="small" for="descr-<?= (int)$p['id'] ?>">Описание фотографии</label><textarea id="descr-<?= (int)$p['id'] ?>" class="in" name="description" placeholder="Описание фотографии"><?= h((string)($p['description'] ?? '')) ?></textarea></p>
+                  <p><textarea id="descr-<?= (int)$p['id'] ?>" class="in" name="description" placeholder="Описание фотографии"><?= h((string)($p['description'] ?? '')) ?></textarea></p>
                   <div class="small js-save-status"></div>
                 </form>
 
                 <div class="topic-editor js-topic-editor" data-photo-id="<?= (int)$p['id'] ?>" data-endpoint="<?= h('admin.php?token=' . urlencode($tokenIncoming) . '&section_id=' . (int)$activeSectionId . '&mode=photos') ?>">
-                  <div class="small">Тематики</div>
                   <div class="topic-list js-topic-list">
-                    <?php if ($attachedTopics === []): ?>
-                      <span class="topic-empty js-topic-empty">Не выбрано</span>
-                    <?php else: ?>
+                    <?php if ($attachedTopics !== []): ?>
                       <?php foreach($attachedTopics as $topic): ?>
                         <span class="topic-chip" data-topic-id="<?= (int)$topic['id'] ?>">
                           <?= h((string)$topic['full_name']) ?>
@@ -1486,10 +1510,6 @@ function nextUniqueCodeName(string $base): string
 
     list.textContent = '';
     if (!Array.isArray(topics) || topics.length === 0) {
-      const empty = document.createElement('span');
-      empty.className = 'topic-empty js-topic-empty';
-      empty.textContent = 'Не выбрано';
-      list.appendChild(empty);
       return;
     }
 

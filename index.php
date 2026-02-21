@@ -317,14 +317,23 @@ function serveThumb(): never
 
 function outputWatermarked(string $path, string $mime): never
 {
-    $text = 'photo.andr33v.ru';
+    $text = trim(settingGet('watermark_text', 'photo.andr33v.ru'));
+    if ($text === '') {
+        $text = 'photo.andr33v.ru';
+    }
+
+    $brightness = max(5, min(100, (int)settingGet('watermark_brightness', '35')));
+    $angle = max(-75, min(75, (int)settingGet('watermark_angle', '-28')));
+    $imagickOpacity = 0.04 + ($brightness / 100) * 0.24;
+    $gdAlpha = (int)round(127 - ($brightness * 0.9));
+    $gdAlpha = max(10, min(126, $gdAlpha));
 
     if (extension_loaded('imagick')) {
         $im = new Imagick($path);
         $w = max(1, (int)$im->getImageWidth());
         $h = max(1, (int)$im->getImageHeight());
         $draw = new ImagickDraw();
-        $draw->setFillColor(new ImagickPixel('rgba(255,255,255,0.16)'));
+        $draw->setFillColor(new ImagickPixel('rgba(255,255,255,' . number_format($imagickOpacity, 3, '.', '') . ')'));
         $draw->setFontSize(max(12, (int)($w / 46)));
         $draw->setTextAntialias(true);
 
@@ -333,7 +342,7 @@ function outputWatermarked(string $path, string $mime): never
         $stepX = max(120, (int)($w / 3));
         for ($y = -$h; $y < $h * 2; $y += $stepY) {
             for ($x = -$w; $x < $w * 2; $x += $stepX) {
-                $im->annotateImage($draw, $x, $y, -28, $lineText);
+                $im->annotateImage($draw, $x, $y, $angle, $lineText);
             }
         }
 
@@ -359,13 +368,15 @@ function outputWatermarked(string $path, string $mime): never
     }
 
     $font = 2;
-    $color = imagecolorallocatealpha($img, 255, 255, 255, 96);
+    $color = imagecolorallocatealpha($img, 255, 255, 255, $gdAlpha);
     $lineText = $text . '  ' . $text . '  ' . $text;
     $stepY = max(16, imagefontheight($font) + 8);
     $stepX = max(120, (int)($w / 3));
     $row = 0;
+    $skew = max(6, min(48, (int)round(abs($angle))));
+    $dir = $angle < 0 ? 1 : -1;
     for ($y = -$h; $y < $h * 2; $y += $stepY) {
-        $offset = ($row * 22) % $stepX;
+        $offset = ($row * $skew * $dir) % $stepX;
         for ($x = -$w - $offset; $x < $w * 2; $x += $stepX) {
             imagestring($img, $font, $x, $y, $lineText, $color);
         }
