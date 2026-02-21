@@ -53,6 +53,7 @@ if ($photo && $activeSectionId < 1) {
 $comments = $photo ? commentsByPhoto($activePhotoId) : [];
 $topics = [];
 $topicCounts = [];
+$topicTree = [];
 try {
     $topics = topicsAllForSelect();
     if ($activeTopicId > 0) {
@@ -61,9 +62,11 @@ try {
         }
     }
     $topicCounts = topicPhotoCounts($activeSectionId > 0 ? $activeSectionId : null);
+    $topicTree = buildTopicTreePublic($topics);
 } catch (Throwable) {
     $topics = [];
     $topicCounts = [];
+    $topicTree = [];
     $activeTopicId = 0;
 }
 
@@ -112,6 +115,8 @@ if ($photo) {
 }
 
 $hasMobilePhotoNav = $activePhotoId > 0 && $photo && $detailTotal > 0;
+$isTopicMode = $activeTopicId > 0;
+$isSectionMode = !$isTopicMode && $activeSectionId > 0;
 $bodyClasses = [$isHomePage ? 'is-home' : 'is-inner'];
 if ($hasMobilePhotoNav) {
     $bodyClasses[] = 'has-mobile-nav';
@@ -120,6 +125,31 @@ if ($hasMobilePhotoNav) {
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
 function limitText(string $text, int $len): string { return function_exists('mb_substr') ? mb_substr($text, 0, $len) : substr($text, 0, $len); }
+
+function buildTopicTreePublic(array $topics): array
+{
+    $roots = [];
+    $children = [];
+
+    foreach ($topics as $topic) {
+        $parentId = isset($topic['parent_id']) && $topic['parent_id'] !== null ? (int)$topic['parent_id'] : 0;
+        if ($parentId === 0) {
+            $roots[] = $topic;
+            continue;
+        }
+        if (!isset($children[$parentId])) {
+            $children[$parentId] = [];
+        }
+        $children[$parentId][] = $topic;
+    }
+
+    foreach ($roots as &$root) {
+        $root['children'] = $children[(int)$root['id']] ?? [];
+    }
+    unset($root);
+
+    return $roots;
+}
 
 function serveImage(): never
 {
@@ -228,14 +258,16 @@ function outputWatermarked(string $path, string $mime): never
     .page{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr)}
     .panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}
     .sidebar{position:sticky;top:14px;align-self:start;max-height:calc(100dvh - 28px);overflow:auto}
-    .sec{display:grid;gap:6px}
-    .sec a{display:block;padding:10px 12px;border-radius:10px;line-height:1.35;text-decoration:none;color:#111}
-    .sec a.active{background:#eef4ff;color:#1f6feb}
-    .topic-nav{margin-top:12px;padding-top:12px;border-top:1px solid #e8edf5;display:grid;gap:6px}
-    .topic-link{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111;font-size:13px;line-height:1.3}
-    .topic-link.level-1{padding-left:20px}
-    .topic-link.active{background:#edf7f0;color:#146236}
-    .topic-link.disabled{opacity:.55}
+    .nav-group{border-top:1px solid #e8edf5;padding-top:10px;margin-top:10px}
+    .nav-group:first-of-type{border-top:0;margin-top:0;padding-top:0}
+    .nav-summary{cursor:pointer;list-style:none;font-size:13px;font-weight:700;color:#374151;display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .nav-summary::-webkit-details-marker{display:none}
+    .nav-summary::after{content:'▾';font-size:12px;color:#6b7280;transition:transform .18s ease}
+    .nav-group:not([open]) .nav-summary::after{transform:rotate(-90deg)}
+    .nav-list{display:grid;gap:6px;margin-top:8px}
+    .nav-link{display:block;padding:10px 12px;border-radius:10px;line-height:1.35;text-decoration:none;color:#111;font-size:13px}
+    .nav-link.level-1{padding-left:24px}
+    .nav-link.active{background:#eef4ff;color:#1f6feb}
     .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
     .card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
     .card-badges{position:absolute;top:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;z-index:4;pointer-events:none}
@@ -270,8 +302,7 @@ function outputWatermarked(string $path, string $mime): never
     .sidebar-backdrop{display:none}
 
     @media (max-width:900px){
-      .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px}
-      .topbar h1{margin:0;font-size:24px}
+      .topbar{display:flex;align-items:center;justify-content:flex-end;gap:10px}
       .page{grid-template-columns:1fr}
       .sidebar{position:static;max-height:none}
       .pager{display:none}
@@ -290,43 +321,53 @@ function outputWatermarked(string $path, string $mime): never
 
     @media (max-width:560px){
       .app{padding:14px}
-      .topbar h1{font-size:22px}
     }
   </style>
 </head>
 <body class="<?= h(implode(' ', $bodyClasses)) ?>">
 <div class="app">
-  <header class="topbar">
-    <h1>Фотогалерея</h1>
-    <?php if (!$isHomePage): ?>
-      <button class="sidebar-toggle js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Разделы</button>
-    <?php endif; ?>
-  </header>
+  <?php if (!$isHomePage): ?>
+    <header class="topbar">
+      <button class="sidebar-toggle js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
+    </header>
+  <?php endif; ?>
   <?php if (!$isHomePage): ?>
     <button class="sidebar-backdrop js-sidebar-close" type="button" aria-label="Закрыть меню разделов"></button>
   <?php endif; ?>
   <div class="page">
-    <aside id="sidebar" class="panel sec sidebar">
+    <aside id="sidebar" class="panel sidebar">
       <div class="sidebar-head">
-        <h3>Разделы</h3>
+        <h3>Навигация</h3>
         <?php if (!$isHomePage): ?>
           <button class="sidebar-close js-sidebar-close" type="button" aria-label="Закрыть меню разделов">×</button>
         <?php endif; ?>
       </div>
-      <?php foreach($sections as $s): ?>
-        <a class="<?= (int)$s['id']===$activeSectionId?'active':'' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
-      <?php endforeach; ?>
 
-      <?php if ($topics !== []): ?>
-        <div class="topic-nav">
-          <strong style="font-size:13px">Тематики</strong>
-          <a class="topic-link<?= $activeTopicId < 1 ? ' active' : '' ?>" href="?<?= $activeSectionId > 0 ? 'section_id=' . $activeSectionId : '' ?><?= $viewerToken!=='' ? (($activeSectionId > 0 ? '&' : '') . 'viewer=' . urlencode($viewerToken)) : '' ?>">Все тематики</a>
-          <?php foreach($topics as $t): ?>
-            <?php $topicCount = (int)($topicCounts[(int)$t['id']] ?? 0); ?>
-            <?php if ($activeSectionId > 0 && $topicCount < 1) continue; ?>
-            <a class="topic-link level-<?= (int)$t['level'] ?><?= (int)$t['id'] === $activeTopicId ? ' active' : '' ?>" href="?<?= $activeSectionId > 0 ? 'section_id=' . $activeSectionId . '&' : '' ?>topic_id=<?= (int)$t['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= (int)$t['level'] === 1 ? '— ' : '' ?><?= h((string)$t['full_name']) ?> <span class="muted">(<?= $topicCount ?>)</span></a>
+      <details class="nav-group" open>
+        <summary class="nav-summary">Разделы</summary>
+        <div class="nav-list">
+          <?php foreach($sections as $s): ?>
+            <a class="nav-link<?= $isSectionMode && (int)$s['id']===$activeSectionId ? ' active' : '' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $activeTopicId > 0 ? '&topic_id=' . $activeTopicId : '' ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
           <?php endforeach; ?>
         </div>
+      </details>
+
+      <?php if ($topicTree !== []): ?>
+        <details class="nav-group"<?= $activeTopicId > 0 ? ' open' : '' ?>>
+          <summary class="nav-summary">Тематики</summary>
+          <div class="nav-list">
+            <?php foreach($topicTree as $root): ?>
+              <?php $rootCount = (int)($topicCounts[(int)$root['id']] ?? 0); ?>
+              <?php if ($activeSectionId > 0 && $rootCount < 1) continue; ?>
+              <a class="nav-link<?= $isTopicMode && (int)$root['id'] === $activeTopicId ? ' active' : '' ?>" href="?<?= $activeSectionId > 0 ? 'section_id=' . $activeSectionId . '&' : '' ?>topic_id=<?= (int)$root['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$root['name']) ?> <span class="muted">(<?= $rootCount ?>)</span></a>
+              <?php foreach(($root['children'] ?? []) as $child): ?>
+                <?php $childCount = (int)($topicCounts[(int)$child['id']] ?? 0); ?>
+                <?php if ($activeSectionId > 0 && $childCount < 1) continue; ?>
+                <a class="nav-link level-1<?= $isTopicMode && (int)$child['id'] === $activeTopicId ? ' active' : '' ?>" href="?<?= $activeSectionId > 0 ? 'section_id=' . $activeSectionId . '&' : '' ?>topic_id=<?= (int)$child['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$child['name']) ?> <span class="muted">(<?= $childCount ?>)</span></a>
+              <?php endforeach; ?>
+            <?php endforeach; ?>
+          </div>
+        </details>
       <?php endif; ?>
       <p class="note" style="margin-top:12px"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
     </aside>
