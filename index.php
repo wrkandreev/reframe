@@ -451,6 +451,7 @@ function outputWatermarked(string $path, string $mime): never
     .card img{width:100%;height:130px;object-fit:contain;object-position:center;background:#f8fafc}
     .cap{padding:8px;font-size:13px}
     .detail{padding:18px}
+    .detail-head{display:flex;justify-content:flex-end;margin:0 0 10px}
     .detail img{max-width:100%;border-radius:10px;border:1px solid #e5e7eb}
     .detail .stack{display:grid;gap:14px;grid-template-columns:1fr;margin:0 0 18px}
     .detail-frame{display:grid;gap:6px}
@@ -495,6 +496,7 @@ function outputWatermarked(string $path, string $mime): never
       .page{grid-template-columns:1fr}
       .sidebar{position:static;max-height:none}
       .pager{display:none}
+      .detail-head{display:none}
 
       .has-mobile-nav .app{padding-bottom:84px}
       .mobile-photo-nav,.mobile-catalog-nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);backdrop-filter:blur(6px);border-top:1px solid #e5e7eb}
@@ -572,6 +574,9 @@ function outputWatermarked(string $path, string $mime): never
     <main>
       <?php if ($activePhotoId > 0 && $photo): ?>
         <section class="panel detail">
+          <?php if ($detailTotal > 0): ?>
+            <div class="detail-head"><div class="detail-label">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div></div>
+          <?php endif; ?>
           <?php $hasAfterVersion = !empty($photo['after_file_id']); ?>
           <div class="stack">
             <?php if (!empty($photo['before_file_id'])): ?>
