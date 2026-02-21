@@ -58,8 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($action === 'create_section') {
             $name = trim((string)($_POST['name'] ?? ''));
-            $sort = (int)($_POST['sort_order'] ?? 1000);
             if ($name === '') throw new RuntimeException('Название раздела пустое');
+            $sort = nextSectionSortOrder();
             sectionCreate($name, $sort);
             $message = 'Раздел создан';
         }
@@ -82,7 +82,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'create_topic') {
             $name = trim((string)($_POST['name'] ?? ''));
-            $sort = (int)($_POST['sort_order'] ?? 1000);
             $parentId = (int)($_POST['parent_id'] ?? 0);
             $parent = null;
             if ($name === '') throw new RuntimeException('Название тематики пустое');
@@ -95,6 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            $sort = nextTopicSortOrder($parentId > 0 ? $parentId : null);
             topicCreate($name, $parentId > 0 ? $parentId : null, $sort);
             $message = 'Тематика создана';
         }
@@ -486,6 +486,21 @@ function buildTopicTree(array $topics): array
     return $roots;
 }
 
+function nextSectionSortOrder(): int
+{
+    $sort = (int)db()->query('SELECT COALESCE(MAX(sort_order), 990) + 10 FROM sections')->fetchColumn();
+    return max(10, $sort);
+}
+
+function nextTopicSortOrder(?int $parentId): int
+{
+    $st = db()->prepare('SELECT COALESCE(MAX(sort_order), 990) + 10 FROM topics WHERE parent_id <=> :pid');
+    $st->bindValue('pid', $parentId, $parentId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+    $st->execute();
+    $sort = (int)$st->fetchColumn();
+    return max(10, $sort);
+}
+
 function saveBulkBefore(array $files, int $sectionId): array
 {
     $ok = 0;
@@ -845,31 +860,39 @@ function nextUniqueCodeName(string $base): string
 
       <?php if ($adminMode === 'sections'): ?>
       <section class="card">
-        <h3>Редактировать выбранный раздел</h3>
-        <?php if ($activeSection): ?>
-          <form class="js-section-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections&section_id=<?= (int)$activeSectionId ?>">
-            <input type="hidden" name="action" value="update_section"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
-            <p><input class="in" name="name" value="<?= h((string)$activeSection['name']) ?>" required></p>
-            <p><input class="in" type="number" name="sort_order" value="<?= (int)$activeSection['sort_order'] ?>"></p>
-            <div class="small js-save-status"></div>
-          </form>
-          <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections" onsubmit="return confirmSectionDelete()" style="margin-top:8px">
-            <input type="hidden" name="action" value="delete_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
-            <button class="btn btn-danger" type="submit">Удалить раздел</button>
-          </form>
-        <?php else: ?>
-          <p class="small">Нет разделов для редактирования.</p>
-        <?php endif; ?>
-      </section>
-
-      <section class="card">
         <h3>Создать раздел</h3>
         <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections">
           <input type="hidden" name="action" value="create_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
           <p><input class="in" name="name" placeholder="Новый раздел" required></p>
-          <p><input class="in" type="number" name="sort_order" value="1000"></p>
           <button class="btn" type="submit">Создать раздел</button>
         </form>
+      </section>
+
+      <section class="card">
+        <h3>Список разделов</h3>
+        <?php if ($sections === []): ?>
+          <p class="small">Разделов пока нет.</p>
+        <?php else: ?>
+          <div class="topic-tree">
+            <?php foreach($sections as $section): ?>
+              <div class="topic-node level-1">
+                <div class="topic-line">
+                  <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections&section_id=<?= (int)$section['id'] ?>" class="topic-row js-section-form">
+                    <input type="hidden" name="action" value="update_section"><input type="hidden" name="ajax" value="1"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$section['id'] ?>">
+                    <input class="in" type="text" name="name" value="<?= h((string)$section['name']) ?>" required>
+                    <input class="in" type="number" name="sort_order" value="<?= (int)$section['sort_order'] ?>">
+                    <div class="small js-save-status" style="grid-column:1 / -1"></div>
+                  </form>
+                  <form class="inline-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=sections" onsubmit="return confirmSectionDelete()">
+                    <input type="hidden" name="action" value="delete_section"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$section['id'] ?>">
+                    <button class="btn btn-danger topic-delete-btn" type="submit">Удалить</button>
+                  </form>
+                </div>
+                <p class="small" style="margin:8px 0 0">Фото: <?= (int)$section['photos_count'] ?></p>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
       </section>
 
       <?php endif; ?>
@@ -891,7 +914,6 @@ function nextUniqueCodeName(string $base): string
                 <?php endforeach; ?>
               </select>
             </p>
-            <p><input class="in" type="number" name="sort_order" value="1000"></p>
             <button class="btn" type="submit">Создать тематику</button>
           </form>
         <?php endif; ?>
