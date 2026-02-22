@@ -573,7 +573,7 @@ function serveThumb(): never
     }
 
     $f = photoFileById($fileId);
-    if (!$f || (string)$f['kind'] !== 'before') {
+    if (!$f || !in_array((string)$f['kind'], ['before', 'after'], true)) {
         http_response_code(404);
         exit;
     }
