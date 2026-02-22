@@ -10,7 +10,7 @@ return [
     ],
     'deploy' => [
         'remote_name' => 'origin',
-        'remote_url' => 'git@github.com:wrkandreev/reframe.git',
+        'remote_url' => 'https://github.com/wrkandreev/reframe.git',
         'branch' => 'main',
         'script' => __DIR__ . '/scripts/deploy.sh',
         'php_bin' => 'php',

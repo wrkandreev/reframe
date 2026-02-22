@@ -86,7 +86,7 @@ cp config.php.example config.php
    Для деплоя из админки в `config.php` можно задать:
 
    - `deploy.remote_name` (обычно `origin`),
-   - `deploy.remote_url` (по умолчанию `git@github.com:wrkandreev/reframe.git`),
+   - `deploy.remote_url` (по умолчанию `https://github.com/wrkandreev/reframe.git`),
    - `deploy.branch` (`main` или `dev`).
 
 3. Создай `secrets.php`:
