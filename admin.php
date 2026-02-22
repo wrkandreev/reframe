@@ -479,7 +479,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
             <tr>
               <td>
                 <?php if (!empty($p['before_file_id'])): ?>
-                  <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="before" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
+                  <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="before" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=thumb&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" loading="lazy" decoding="async" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
                   <div class="preview-actions">
                     <form class="inline-form js-rotate-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                       <input type="hidden" name="action" value="rotate_photo_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="kind" value="before"><input type="hidden" name="direction" value="left">
@@ -495,7 +495,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
               <td>
                 <div class="after-slot js-after-slot" data-photo-id="<?= (int)$p['id'] ?>">
                   <?php if (!empty($p['after_file_id'])): ?>
-                    <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="after" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
+                    <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="after" data-full="index.php?action=image&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=thumb&file_id=<?= (int)$p['after_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" loading="lazy" decoding="async" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
                   <?php else: ?>
                     <div class="small js-after-empty">Фото после не загружено</div>
                   <?php endif; ?>
@@ -783,7 +783,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
     });
   };
 
-  const upsertAfterPreview = (photoId, previewUrl) => {
+  const upsertAfterPreview = (photoId, previewUrl, fullUrl) => {
     const slot = document.querySelector(`.js-after-slot[data-photo-id="${photoId}"]`);
     if (!slot) {
       return;
@@ -811,11 +811,13 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
       imgEl.style.objectFit = 'cover';
       imgEl.style.border = '1px solid #e5e7eb';
       imgEl.style.borderRadius = '6px';
+      imgEl.loading = 'lazy';
+      imgEl.decoding = 'async';
       slot.prepend(imgEl);
     }
 
     imgEl.src = previewUrl;
-    imgEl.dataset.full = previewUrl;
+    imgEl.dataset.full = fullUrl || previewUrl;
 
     const pickBtn = slot.querySelector('.js-after-pick');
     if (pickBtn) {
@@ -935,7 +937,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
 
         const photoId = Number(fd.get('photo_id') || 0);
         if (photoId > 0 && j.preview_url) {
-          upsertAfterPreview(photoId, j.preview_url);
+          upsertAfterPreview(photoId, j.preview_url, j.full_url || j.preview_url);
           uploaded = true;
         }
       } catch (err) {

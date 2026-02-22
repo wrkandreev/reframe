@@ -282,7 +282,9 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
 
             $updatedPhoto = photoById($photoId);
             $afterFileId = (int)($updatedPhoto['after_file_id'] ?? 0);
-            $previewUrl = $afterFileId > 0 ? ('index.php?action=image&file_id=' . $afterFileId . '&v=' . rawurlencode((string)time())) : '';
+            $cacheVersion = rawurlencode((string)time());
+            $previewUrl = $afterFileId > 0 ? ('index.php?action=thumb&file_id=' . $afterFileId . '&v=' . $cacheVersion) : '';
+            $fullUrl = $afterFileId > 0 ? ('index.php?action=image&file_id=' . $afterFileId . '&v=' . $cacheVersion) : '';
 
             $message = 'Фото после обновлено';
             if ($isAjax) {
@@ -291,6 +293,7 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
                     'message' => $message,
                     'photo_id' => $photoId,
                     'preview_url' => $previewUrl,
+                    'full_url' => $fullUrl,
                 ]);
             }
             break;
