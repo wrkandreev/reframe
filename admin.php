@@ -117,6 +117,7 @@ if (!$activeSection && $sections !== []) {
 }
 $photos = $activeSectionId > 0 ? photosBySection($activeSectionId) : [];
 $commenters = commentersAll();
+$commenterDeviceCounts = commenterActiveDeviceCounts();
 $welcomeText = settingGet('welcome_text', 'Добро пожаловать в галерею. Выберите раздел слева, чтобы посмотреть фотографии.');
 $watermarkText = settingGet('watermark_text', 'photo.andr33v.ru');
 $watermarkBrightness = max(5, min(100, (int)settingGet('watermark_brightness', '35')));
@@ -574,19 +575,24 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
       <?php if ($adminMode === 'commenters'): ?>
       <section class="card">
         <h3>Пользователи комментариев</h3>
-        <table class="tbl"><tr><th>Пользователь</th><th>Ссылка</th><th>Действия</th></tr>
+        <table class="tbl"><tr><th>Пользователь</th><th>Ссылка</th><th>Устройства</th><th>Действия</th></tr>
           <?php foreach($commenters as $u): ?>
-            <?php $viewerLink = !empty($u['token_plain']) ? ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/?viewer=' . urlencode((string)$u['token_plain'])) : ''; ?>
+            <?php $viewerLink = !empty($u['token_plain']) ? buildViewerAccessLink((int)$u['id'], (string)$u['token_plain']) : ''; ?>
+            <?php $activeDevices = (int)($commenterDeviceCounts[(int)$u['id']] ?? 0); ?>
             <tr><td><?= h((string)$u['display_name']) ?></td><td>
               <?php if ($viewerLink !== ''): ?>
                 <input class="in" type="text" readonly value="<?= h($viewerLink) ?>" onclick="this.select()" style="min-width:320px">
               <?php else: ?>
                 <span class="small">Нет сохранённой ссылки (старый пользователь)</span>
               <?php endif; ?>
-            </td><td style="display:flex;gap:8px;flex-wrap:wrap">
+            </td><td><span class="small"><?= $activeDevices ?></span></td><td style="display:flex;gap:8px;flex-wrap:wrap">
               <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">
                 <input type="hidden" name="action" value="regenerate_commenter_token"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
-                <button class="btn" type="submit">Новая ссылка</button>
+                <button class="btn" type="submit">Отозвать токен и сессии</button>
+              </form>
+              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">
+                <input type="hidden" name="action" value="revoke_commenter_sessions"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                <button class="btn btn-secondary" type="submit">Отозвать сессии</button>
               </form>
               <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters" onsubmit="return confirm('Удалить пользователя?')">
                 <input type="hidden" name="action" value="delete_commenter"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">

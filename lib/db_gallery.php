@@ -314,6 +314,13 @@ function commenterByToken(string $token): ?array
     return $st->fetch() ?: null;
 }
 
+function commenterById(int $id): ?array
+{
+    $st = db()->prepare('SELECT * FROM comment_users WHERE id=:id AND is_active=1');
+    $st->execute(['id' => $id]);
+    return $st->fetch() ?: null;
+}
+
 function commenterCreate(string $displayName): array
 {
     $token = bin2hex(random_bytes(16));
@@ -333,6 +340,27 @@ function commentersAll(): array
     return db()->query('SELECT * FROM comment_users ORDER BY id DESC')->fetchAll();
 }
 
+function commenterActiveDeviceCounts(): array
+{
+    $sql = 'SELECT user_id, COUNT(DISTINCT device_hash) AS cnt
+            FROM viewer_sessions
+            WHERE revoked_at IS NULL
+              AND expires_at > NOW()
+            GROUP BY user_id';
+    try {
+        $rows = db()->query($sql)->fetchAll();
+    } catch (Throwable) {
+        return [];
+    }
+
+    $counts = [];
+    foreach ($rows as $row) {
+        $counts[(int)$row['user_id']] = (int)$row['cnt'];
+    }
+
+    return $counts;
+}
+
 function commenterDelete(int $id): void
 {
     $st = db()->prepare('DELETE FROM comment_users WHERE id=:id');
@@ -346,6 +374,60 @@ function commenterRegenerateToken(int $id): string
     $st = db()->prepare('UPDATE comment_users SET token_hash=:h, token_plain=:p WHERE id=:id');
     $st->execute(['h' => $hash, 'p' => $token, 'id' => $id]);
     return $token;
+}
+
+function viewerSessionCreate(int $userId, string $deviceToken, ?string $userAgent, ?string $ipAddress, int $ttlSeconds = 2592000): string
+{
+    $sessionToken = bin2hex(random_bytes(32));
+    $sessionHash = hash('sha256', $sessionToken);
+    $deviceHash = hash('sha256', $deviceToken);
+    $expiresAt = date('Y-m-d H:i:s', time() + max(300, $ttlSeconds));
+
+    $st = db()->prepare('INSERT INTO viewer_sessions(user_id, session_hash, device_hash, user_agent, ip_address, expires_at)
+                         VALUES (:uid, :sh, :dh, :ua, :ip, :exp)');
+    $st->execute([
+        'uid' => $userId,
+        'sh' => $sessionHash,
+        'dh' => $deviceHash,
+        'ua' => $userAgent,
+        'ip' => $ipAddress,
+        'exp' => $expiresAt,
+    ]);
+
+    return $sessionToken;
+}
+
+function viewerSessionByToken(string $sessionToken): ?array
+{
+    $sessionHash = hash('sha256', $sessionToken);
+    $sql = 'SELECT vs.id AS session_id, vs.user_id, vs.expires_at, vs.last_seen_at,
+                   u.id, u.display_name, u.is_active
+            FROM viewer_sessions vs
+            JOIN comment_users u ON u.id = vs.user_id
+            WHERE vs.session_hash = :sh
+              AND vs.revoked_at IS NULL
+              AND vs.expires_at > NOW()
+              AND u.is_active = 1
+            LIMIT 1';
+    $st = db()->prepare($sql);
+    $st->execute(['sh' => $sessionHash]);
+    return $st->fetch() ?: null;
+}
+
+function viewerSessionTouch(int $sessionId): void
+{
+    $st = db()->prepare('UPDATE viewer_sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE id=:id');
+    $st->execute(['id' => $sessionId]);
+}
+
+function viewerSessionsRevokeByUser(int $userId): int
+{
+    $st = db()->prepare('UPDATE viewer_sessions
+                         SET revoked_at = NOW()
+                         WHERE user_id=:uid
+                           AND revoked_at IS NULL');
+    $st->execute(['uid' => $userId]);
+    return $st->rowCount();
 }
 
 function commentsByPhoto(int $photoId): array

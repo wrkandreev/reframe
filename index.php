@@ -13,11 +13,62 @@ if ($action === 'image') {
     serveImage();
 }
 
-$viewerToken = trim((string)($_GET['viewer'] ?? ''));
-$viewer = $viewerToken !== '' ? commenterByToken($viewerToken) : null;
+$viewerSessionCookie = 'viewer_session';
+$viewerDeviceCookie = 'viewer_device';
+$viewerSessionTtlSeconds = 60 * 60 * 24 * 30;
+
+$viewer = viewerFromCookie($viewerSessionCookie, $viewerDeviceCookie);
+
+$legacyViewerToken = trim((string)($_GET['viewer'] ?? ''));
+if ($viewer === null && $legacyViewerToken !== '') {
+    $legacyUser = commenterByToken($legacyViewerToken);
+    if ($legacyUser) {
+        [$sessionToken, $deviceToken] = issueViewerSessionTokens((int)$legacyUser['id'], $viewerDeviceCookie, $viewerSessionTtlSeconds);
+        applyViewerCookies($viewerSessionCookie, $sessionToken, $viewerDeviceCookie, $deviceToken, $viewerSessionTtlSeconds);
+        $redirect = currentUrlWithoutParams(['viewer']);
+        header('Location: ' . $redirect);
+        exit;
+    }
+}
+
+$postAction = (string)($_POST['action'] ?? '');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $postAction === 'viewer_auth') {
+    $viewerId = (int)($_POST['viewer_id'] ?? 0);
+    $viewerKey = trim((string)($_POST['viewer_key'] ?? ''));
+
+    header('Content-Type: application/json; charset=utf-8');
+
+    if ($viewerId < 1 || $viewerKey === '') {
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'message' => 'Ссылка для комментариев недействительна.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $authUser = commenterByToken($viewerKey);
+    if (!$authUser || (int)$authUser['id'] !== $viewerId) {
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'message' => 'Ссылка для комментариев недействительна.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        [$sessionToken, $deviceToken] = issueViewerSessionTokens($viewerId, $viewerDeviceCookie, $viewerSessionTtlSeconds);
+        applyViewerCookies($viewerSessionCookie, $sessionToken, $viewerDeviceCookie, $deviceToken, $viewerSessionTtlSeconds);
+    } catch (Throwable) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'message' => 'Сервис комментариев временно недоступен.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    echo json_encode([
+        'ok' => true,
+        'message' => 'Вход выполнен.',
+        'display_name' => (string)($authUser['display_name'] ?? ''),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'add_comment') {
-    $token = trim((string)($_POST['viewer'] ?? ''));
     $photoId = (int)($_POST['photo_id'] ?? 0);
     $sectionId = (int)($_POST['section_id'] ?? 0);
     $topicId = (int)($_POST['topic_id'] ?? 0);
@@ -31,20 +82,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     $errorMessage = '';
     $errorCode = 422;
 
-    if ($token !== '' && $photoId > 0 && $text !== '') {
-        $u = commenterByToken($token);
-        if ($u) {
-            try {
-                $savedComment = commentAdd($photoId, (int)$u['id'], limitText($text, 1000));
-                $commentSaved = true;
-            } catch (Throwable $e) {
-                error_log('Comment add failed: ' . $e->getMessage());
-                $errorMessage = 'Не удалось отправить комментарий.';
-                $errorCode = 500;
-            }
-        } else {
-            $errorMessage = 'Ссылка для комментариев недействительна.';
+    if ($viewer && $photoId > 0 && $text !== '') {
+        try {
+            $savedComment = commentAdd($photoId, (int)$viewer['id'], limitText($text, 1000));
+            $commentSaved = true;
+        } catch (Throwable $e) {
+            error_log('Comment add failed: ' . $e->getMessage());
+            $errorMessage = 'Не удалось отправить комментарий.';
+            $errorCode = 500;
         }
+    } elseif (!$viewer) {
+        $errorMessage = 'Нужна персональная ссылка для входа.';
     } else {
         $errorMessage = 'Заполни текст комментария.';
     }
@@ -76,9 +124,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     }
     if ($topicId > 0) {
         $redirect .= '&topic_id=' . $topicId;
-    }
-    if ($token !== '') {
-        $redirect .= '&viewer=' . urlencode($token);
     }
     header('Location: ' . $redirect);
     exit;
@@ -272,6 +317,126 @@ $catalogOverviewCountLabel = count($photos) . ' фото';
 function h(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $v=is_file($f)?(string)filemtime($f):(string)time(); return $path . '?v=' . rawurlencode($v); }
 function limitText(string $text, int $len): string { return function_exists('mb_substr') ? mb_substr($text, 0, $len) : substr($text, 0, $len); }
+function isHttpsRequest(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') {
+        return true;
+    }
+
+    return strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+}
+
+function issueViewerSessionTokens(int $userId, string $deviceCookieName, int $ttlSeconds): array
+{
+    $deviceToken = strtolower(trim((string)($_COOKIE[$deviceCookieName] ?? '')));
+    if (!preg_match('/^[a-f0-9]{32}$/', $deviceToken)) {
+        $deviceToken = bin2hex(random_bytes(16));
+    }
+
+    $userAgent = trim((string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    if ($userAgent !== '') {
+        $userAgent = substr($userAgent, 0, 255);
+    }
+
+    $ipAddress = trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
+    if ($ipAddress !== '') {
+        $ipAddress = substr($ipAddress, 0, 64);
+    }
+
+    $sessionToken = viewerSessionCreate(
+        $userId,
+        $deviceToken,
+        $userAgent !== '' ? $userAgent : null,
+        $ipAddress !== '' ? $ipAddress : null,
+        $ttlSeconds
+    );
+
+    return [$sessionToken, $deviceToken];
+}
+
+function applyViewerCookies(string $sessionCookieName, string $sessionToken, string $deviceCookieName, string $deviceToken, int $ttlSeconds): void
+{
+    $secure = isHttpsRequest();
+    $expires = time() + max(300, $ttlSeconds);
+
+    setcookie($sessionCookieName, $sessionToken, [
+        'expires' => $expires,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    setcookie($deviceCookieName, $deviceToken, [
+        'expires' => $expires,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+function clearViewerCookies(string $sessionCookieName, string $deviceCookieName): void
+{
+    $secure = isHttpsRequest();
+    $expired = time() - 3600;
+    setcookie($sessionCookieName, '', [
+        'expires' => $expired,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    setcookie($deviceCookieName, '', [
+        'expires' => $expired,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+function viewerFromCookie(string $sessionCookieName, string $deviceCookieName): ?array
+{
+    $sessionToken = trim((string)($_COOKIE[$sessionCookieName] ?? ''));
+    if ($sessionToken === '') {
+        return null;
+    }
+
+    try {
+        $session = viewerSessionByToken($sessionToken);
+    } catch (Throwable) {
+        return null;
+    }
+    if (!$session) {
+        clearViewerCookies($sessionCookieName, $deviceCookieName);
+        return null;
+    }
+
+    viewerSessionTouch((int)$session['session_id']);
+
+    return [
+        'id' => (int)$session['id'],
+        'display_name' => (string)$session['display_name'],
+    ];
+}
+
+function currentUrlWithoutParams(array $keysToRemove): string
+{
+    $requestUri = (string)($_SERVER['REQUEST_URI'] ?? '/');
+    $path = (string)(parse_url($requestUri, PHP_URL_PATH) ?: '/');
+    $query = (string)(parse_url($requestUri, PHP_URL_QUERY) ?: '');
+
+    $params = [];
+    if ($query !== '') {
+        parse_str($query, $params);
+    }
+    foreach ($keysToRemove as $key) {
+        unset($params[$key]);
+    }
+
+    return $path . ($params !== [] ? ('?' . http_build_query($params)) : '');
+}
+
 function imageIntrinsicSize(int $fileId): array
 {
     if ($fileId < 1) {
@@ -615,7 +780,7 @@ function outputWatermarked(string $path, string $mime): never
           <div class="nav-list">
             <?php foreach($sections as $s): ?>
               <?php if ((int)($s['photos_count'] ?? 0) < 1) continue; ?>
-              <a class="nav-link<?= $isSectionMode && (int)$s['id']===$activeSectionId ? ' active' : '' ?>" href="?section_id=<?= (int)$s['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
+              <a class="nav-link<?= $isSectionMode && (int)$s['id']===$activeSectionId ? ' active' : '' ?>" href="?section_id=<?= (int)$s['id'] ?>"><?= h((string)$s['name']) ?> <span class="muted">(<?= (int)$s['photos_count'] ?>)</span></a>
             <?php endforeach; ?>
           </div>
         </details>
@@ -628,12 +793,12 @@ function outputWatermarked(string $path, string $mime): never
             <?php foreach($visibleTopicTree as $root): ?>
               <?php $rootCount = (int)($root['visible_count'] ?? 0); ?>
               <?php if ($rootCount > 0): ?>
-                <a class="nav-link<?= $isTopicMode && (int)$root['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$root['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$root['name']) ?> <span class="muted">(<?= $rootCount ?>)</span></a>
+                <a class="nav-link<?= $isTopicMode && (int)$root['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$root['id'] ?>"><?= h((string)$root['name']) ?> <span class="muted">(<?= $rootCount ?>)</span></a>
               <?php endif; ?>
 
               <?php foreach(($root['children'] ?? []) as $child): ?>
                 <?php $childCount = (int)($child['visible_count'] ?? 0); ?>
-                <a class="nav-link<?= $rootCount > 0 ? ' level-1' : '' ?><?= $isTopicMode && (int)$child['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$child['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>"><?= h((string)$child['name']) ?> <span class="muted">(<?= $childCount ?>)</span></a>
+                <a class="nav-link<?= $rootCount > 0 ? ' level-1' : '' ?><?= $isTopicMode && (int)$child['id'] === $activeTopicId ? ' active' : '' ?>" href="?topic_id=<?= (int)$child['id'] ?>"><?= h((string)$child['name']) ?> <span class="muted">(<?= $childCount ?>)</span></a>
               <?php endforeach; ?>
             <?php endforeach; ?>
           </div>
@@ -641,6 +806,7 @@ function outputWatermarked(string $path, string $mime): never
       <?php endif; ?>
       <div class="nav-group">
         <p class="note" style="margin:0"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
+        <p class="note js-viewer-auth-feedback" style="margin:6px 0 0" hidden></p>
       </div>
     </aside>
     <main>
@@ -682,9 +848,9 @@ function outputWatermarked(string $path, string $mime): never
 
           <h2 class="detail-title"><?= h((string)$photo['code_name']) ?></h2>
           <div class="detail-meta">
-            <a class="detail-meta-link" href="?section_id=<?= (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Раздел: <?= h($sectionNames[$detailSectionId] ?? ('#' . (string)$detailSectionId)) ?></a>
+            <a class="detail-meta-link" href="?section_id=<?= (int)$detailSectionId ?>">Раздел: <?= h($sectionNames[$detailSectionId] ?? ('#' . (string)$detailSectionId)) ?></a>
             <?php foreach($photoTopics as $topic): ?>
-              <a class="detail-meta-link" href="?topic_id=<?= (int)$topic['id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Тематика: <?= h((string)$topic['full_name']) ?></a>
+              <a class="detail-meta-link" href="?topic_id=<?= (int)$topic['id'] ?>">Тематика: <?= h((string)$topic['full_name']) ?></a>
             <?php endforeach; ?>
           </div>
           <p class="muted detail-description"><?= h((string)($photo['description'] ?? '')) ?></p>
@@ -696,7 +862,6 @@ function outputWatermarked(string $path, string $mime): never
               <input type="hidden" name="photo_id" value="<?= (int)$photo['id'] ?>">
               <input type="hidden" name="section_id" value="<?= $isSectionMode ? (int)$detailSectionId : 0 ?>">
               <input type="hidden" name="topic_id" value="<?= $isTopicMode ? (int)$activeTopicId : 0 ?>">
-              <input type="hidden" name="viewer" value="<?= h($viewerToken) ?>">
               <textarea class="js-comment-textarea comment-input" name="comment_text" required></textarea>
               <p class="comment-actions"><button class="btn" type="submit">Отправить</button></p>
               <p class="comment-feedback js-comment-feedback" role="status" aria-live="polite" hidden></p>
@@ -715,8 +880,8 @@ function outputWatermarked(string $path, string $mime): never
             <div class="pager">
               <div class="muted"><?= h($detailCounterLabel) ?></div>
               <div class="pager-actions">
-                <a class="pager-link js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">← Предыдущее</a>
-                <a class="pager-link js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>">Следующее →</a>
+                <a class="pager-link js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>">← Предыдущее</a>
+                <a class="pager-link js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>">Следующее →</a>
               </div>
             </div>
           <?php endif; ?>
@@ -737,7 +902,7 @@ function outputWatermarked(string $path, string $mime): never
             <div class="cards">
               <?php foreach($photos as $p): ?>
                 <?php $cardCommentCount = (int)($photoCommentCounts[(int)$p['id']] ?? 0); ?>
-                <a class="card js-photo-card" href="?photo_id=<?= (int)$p['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$p['section_id'] ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" style="text-decoration:none;color:inherit;position:relative">
+                <a class="card js-photo-card" href="?photo_id=<?= (int)$p['id'] ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$p['section_id'] ?>" style="text-decoration:none;color:inherit;position:relative">
                   <?php if (!empty($p['before_file_id'])): ?><div class="img-box thumb-img-box"><img src="?action=thumb&file_id=<?= (int)$p['before_file_id'] ?>" alt="" loading="lazy" decoding="async" fetchpriority="low"></div><?php endif; ?>
                   <div class="card-badges">
                     <?php if ($cardCommentCount > 0): ?><span class="card-badge comments" title="Комментариев: <?= $cardCommentCount ?>">💬 <?= $cardCommentCount ?></span><?php endif; ?>
@@ -761,8 +926,8 @@ function outputWatermarked(string $path, string $mime): never
   <nav class="mobile-photo-nav" aria-label="Навигация по фото">
     <button class="mobile-nav-link js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
     <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
-    <a class="mobile-nav-link js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="false">←</a>
-    <a class="mobile-nav-link js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?><?= $viewerToken!=='' ? '&viewer=' . urlencode($viewerToken) : '' ?>" aria-disabled="false">→</a>
+    <a class="mobile-nav-link js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">←</a>
+    <a class="mobile-nav-link js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">→</a>
   </nav>
 <?php elseif ($hasMobileCatalogNav): ?>
   <nav class="mobile-catalog-nav" aria-label="Навигация по каталогу">
@@ -901,6 +1066,80 @@ function outputWatermarked(string $path, string $mime): never
       closeSidebar();
     }
   }, { passive: true });
+})();
+
+(() => {
+  const feedback = document.querySelector('.js-viewer-auth-feedback');
+  const url = new URL(window.location.href);
+  const viewerId = Number(url.searchParams.get('viewer_id') || 0);
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+  if (!Number.isInteger(viewerId) || viewerId < 1 || hash === '') {
+    return;
+  }
+
+  const hashParams = new URLSearchParams(hash);
+  const viewerKey = String(hashParams.get('k') || '').trim();
+  if (viewerKey === '') {
+    return;
+  }
+
+  const setFeedback = (message, isError) => {
+    if (!feedback) {
+      return;
+    }
+    if (!message) {
+      feedback.hidden = true;
+      feedback.textContent = '';
+      return;
+    }
+    feedback.hidden = false;
+    feedback.textContent = message;
+    feedback.style.color = isError ? '#b42318' : '#4b5563';
+  };
+
+  setFeedback('Проверяем персональную ссылку…', false);
+
+  const formData = new FormData();
+  formData.set('action', 'viewer_auth');
+  formData.set('ajax', '1');
+  formData.set('viewer_id', String(viewerId));
+  formData.set('viewer_key', viewerKey);
+
+  fetch(url.pathname + url.search, {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+    .then(async (response) => {
+      const raw = await response.text();
+      let payload = null;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok || !payload || payload.ok !== true) {
+        const errorMessage = payload && payload.message
+          ? String(payload.message)
+          : (raw.trim() !== '' ? raw.slice(0, 220) : 'Не удалось выполнить вход по ссылке.');
+        throw new Error(errorMessage);
+      }
+
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('viewer_id');
+      cleanUrl.hash = '';
+      window.location.replace(cleanUrl.toString());
+    })
+    .catch((error) => {
+      const message = error instanceof Error && error.message !== ''
+        ? error.message
+        : 'Не удалось выполнить вход по ссылке.';
+      setFeedback(message, true);
+    });
 })();
 
 (() => {

@@ -411,7 +411,7 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
                 throw new RuntimeException('Укажи имя комментатора');
             }
             $u = commenterCreate($displayName);
-            $link = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/?viewer=' . urlencode($u['token']);
+            $link = buildViewerAccessLink((int)$u['id'], (string)$u['token']);
             $message = 'Комментатор создан: ' . $u['display_name'] . ' | ссылка: ' . $link;
             break;
         }
@@ -419,6 +419,7 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
         case 'delete_commenter': {
             $id = (int)($_POST['id'] ?? 0);
             if ($id > 0) {
+                viewerSessionsRevokeByUser($id);
                 commenterDelete($id);
                 $message = 'Комментатор удалён (доступ отозван)';
             }
@@ -429,8 +430,18 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
             $id = (int)($_POST['id'] ?? 0);
             if ($id > 0) {
                 $token = commenterRegenerateToken($id);
-                $link = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/?viewer=' . urlencode($token);
-                $message = 'Токен обновлён | ссылка: ' . $link;
+                $revokedSessions = viewerSessionsRevokeByUser($id);
+                $link = buildViewerAccessLink($id, $token);
+                $message = 'Токен и сессии отозваны (' . $revokedSessions . ') | новая ссылка: ' . $link;
+            }
+            break;
+        }
+
+        case 'revoke_commenter_sessions': {
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id > 0) {
+                $revokedSessions = viewerSessionsRevokeByUser($id);
+                $message = 'Сессии отозваны: ' . $revokedSessions;
             }
             break;
         }

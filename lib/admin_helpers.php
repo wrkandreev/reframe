@@ -91,6 +91,13 @@ function nextTopicSortOrder(?int $parentId): int
     return max(10, $sort);
 }
 
+function buildViewerAccessLink(int $userId, string $token): string
+{
+    $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+    $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
+    return $scheme . '://' . $host . '/?viewer_id=' . $userId . '#k=' . rawurlencode($token);
+}
+
 function saveBulkBefore(array $files, int $sectionId): array
 {
     $ok = 0;
