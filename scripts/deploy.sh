@@ -6,10 +6,14 @@ set -euo pipefail
 #   bash scripts/deploy.sh
 # Optional env:
 #   APP_DIR=/home/USER/www/photo-gallery
+#   REMOTE_NAME=origin
+#   REMOTE_URL=git@github.com:wrkandreev/reframe.git
 #   BRANCH=main
 #   PHP_BIN=php
 
 APP_DIR="${APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+REMOTE_NAME="${REMOTE_NAME:-origin}"
+REMOTE_URL="${REMOTE_URL:-}"
 BRANCH="${BRANCH:-main}"
 PHP_BIN="${PHP_BIN:-php}"
 
@@ -41,8 +45,16 @@ if [ "$current_branch" != "$BRANCH" ]; then
   git checkout "$BRANCH"
 fi
 
-git fetch --all --prune
-git reset --hard "origin/$BRANCH"
+if [ -n "$REMOTE_URL" ]; then
+  if git remote get-url "$REMOTE_NAME" >/dev/null 2>&1; then
+    git remote set-url "$REMOTE_NAME" "$REMOTE_URL"
+  else
+    git remote add "$REMOTE_NAME" "$REMOTE_URL"
+  fi
+fi
+
+git fetch "$REMOTE_NAME" "$BRANCH" --prune
+git reset --hard "$REMOTE_NAME/$BRANCH"
 
 # Run DB migrations required by current code
 "$PHP_BIN" scripts/migrate.php

@@ -83,6 +83,12 @@ cp config.php.example config.php
 
 2. Заполни доступы к БД в `config.php`.
 
+   Для деплоя из админки в `config.php` можно задать:
+
+   - `deploy.remote_name` (обычно `origin`),
+   - `deploy.remote_url` (по умолчанию `git@github.com:wrkandreev/reframe.git`),
+   - `deploy.branch` (`main` или `dev`).
+
 3. Создай `secrets.php`:
 
 ```bash
@@ -155,15 +161,16 @@ php scripts/generate_thumbs.php
 
 Деплой запускается из админки (вкладка `Настройки`):
 
-- кнопка `Проверить обновления` делает `git fetch` и сравнивает `HEAD` с `origin/<branch>`,
+- кнопка `Проверить обновления` делает `git fetch` и сравнивает `HEAD` с `<remote>/<branch>`,
 - если локальная ветка отстает и не расходится (`behind > 0`, `ahead = 0`) — показывается кнопка `Обновить проект`.
 
 Скрипт `scripts/deploy.sh`:
 
-1. делает `git fetch --all --prune`,
-2. переключает код на `origin/<branch>` через `git reset --hard`,
-3. запускает миграции `php scripts/migrate.php`,
-4. сохраняет runtime-папки (`photos`, `thumbs`, `data`).
+1. настраивает remote из `REMOTE_NAME`/`REMOTE_URL` (если передан `REMOTE_URL`),
+2. делает `git fetch <remote> <branch> --prune`,
+3. переключает код на `<remote>/<branch>` через `git reset --hard`,
+4. запускает миграции `php scripts/migrate.php`,
+5. сохраняет runtime-папки (`photos`, `thumbs`, `data`).
 
 Важно: деплой-скрипт перетирает рабочие изменения в репозитории на сервере.
 

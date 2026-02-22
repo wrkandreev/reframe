@@ -144,8 +144,10 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
         }
 
         case 'check_updates': {
+            $remoteName = (string)($deployOptions['remote_name'] ?? 'origin');
+            $remoteUrl = (string)($deployOptions['remote_url'] ?? '');
             $branch = (string)($deployOptions['branch'] ?? 'main');
-            $deployStatus = adminCheckForUpdates($projectRoot, $branch);
+            $deployStatus = adminCheckForUpdates($projectRoot, $branch, $remoteName, $remoteUrl);
             $state = (string)($deployStatus['state'] ?? '');
 
             if ($state === 'update_available') {
@@ -162,11 +164,13 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
         }
 
         case 'deploy_updates': {
+            $remoteName = (string)($deployOptions['remote_name'] ?? 'origin');
+            $remoteUrl = (string)($deployOptions['remote_url'] ?? '');
             $branch = (string)($deployOptions['branch'] ?? 'main');
             $scriptPath = (string)($deployOptions['script'] ?? ($projectRoot . '/scripts/deploy.sh'));
             $phpBin = (string)($deployOptions['php_bin'] ?? 'php');
 
-            $deployStatus = adminCheckForUpdates($projectRoot, $branch);
+            $deployStatus = adminCheckForUpdates($projectRoot, $branch, $remoteName, $remoteUrl);
             if (!(bool)($deployStatus['can_deploy'] ?? false)) {
                 $state = (string)($deployStatus['state'] ?? '');
                 if ($state === 'up_to_date') {
@@ -182,13 +186,13 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
                 throw new RuntimeException('Нельзя применить обновление в текущем состоянии ветки.');
             }
 
-            $deployResult = adminRunDeployScript($projectRoot, $branch, $scriptPath, $phpBin);
+            $deployResult = adminRunDeployScript($projectRoot, $branch, $scriptPath, $phpBin, $remoteName, $remoteUrl);
             $deployOutput = (string)($deployResult['output'] ?? '');
             if (!(bool)($deployResult['ok'] ?? false)) {
                 throw new RuntimeException('Деплой завершился с ошибкой: ' . ($deployOutput !== '' ? $deployOutput : ('код ' . (int)($deployResult['code'] ?? 1))));
             }
 
-            $deployStatus = adminCheckForUpdates($projectRoot, $branch);
+            $deployStatus = adminCheckForUpdates($projectRoot, $branch, $remoteName, $remoteUrl);
             $message = 'Обновление выполнено.';
             break;
         }

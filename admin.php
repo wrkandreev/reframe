@@ -48,6 +48,11 @@ if ($tokenExpected === '' || !hash_equals($tokenExpected, $tokenIncoming)) {
 }
 
 $deployConfig = (array)($config['deploy'] ?? []);
+$deployRemoteName = trim((string)($deployConfig['remote_name'] ?? 'origin'));
+if ($deployRemoteName === '') {
+    $deployRemoteName = 'origin';
+}
+$deployRemoteUrl = trim((string)($deployConfig['remote_url'] ?? ''));
 $allowedDeployBranches = ['main', 'dev'];
 $defaultDeployBranch = trim((string)($deployConfig['branch'] ?? 'main'));
 if (!in_array($defaultDeployBranch, $allowedDeployBranches, true)) {
@@ -83,6 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $result = adminHandlePostAction($action, $isAjax, __DIR__, [
+            'remote_name' => $deployRemoteName,
+            'remote_url' => $deployRemoteUrl,
             'branch' => $deployBranch,
             'script' => $deployScript,
             'php_bin' => $deployPhpBin,
@@ -285,10 +292,12 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
 
         <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
         <h4 style="margin:0 0 8px">Обновление проекта</h4>
-        <p class="small" style="margin:0">Выбери ветку для проверки и обновления: <strong><?= h($deployBranch) ?></strong></p>
+        <p class="small" style="margin:0">Remote: <strong><?= h($deployRemoteName) ?></strong><?= $deployRemoteUrl !== '' ? ' (' . h($deployRemoteUrl) . ')' : '' ?></p>
+        <p class="small" style="margin:4px 0 0">Выбери ветку для проверки и обновления: <strong><?= h($deployBranch) ?></strong></p>
 
         <?php if (is_array($deployStatus)): ?>
           <?php $deployState = (string)($deployStatus['state'] ?? ''); ?>
+          <?php $statusRemoteName = (string)($deployStatus['remote_name'] ?? $deployRemoteName); ?>
           <?php $statusBranch = (string)($deployStatus['branch'] ?? $deployBranch); ?>
           <?php $deployStateMessage = $deployState === 'update_available'
               ? 'Доступна новая версия.'
@@ -299,7 +308,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
                       : 'Ветка расходится с origin. Нужна ручная синхронизация.')); ?>
           <div class="<?= in_array($deployState, ['local_ahead', 'diverged'], true) ? 'err' : 'ok' ?>" style="margin-top:8px">
             <?= h($deployStateMessage) ?><br>
-            <span class="small">Локально: <?= h((string)($deployStatus['local_ref'] ?? '-')) ?> · origin/<?= h($statusBranch) ?>: <?= h((string)($deployStatus['remote_ref'] ?? '-')) ?> · behind: <?= (int)($deployStatus['behind'] ?? 0) ?> · ahead: <?= (int)($deployStatus['ahead'] ?? 0) ?></span>
+            <span class="small">Локально: <?= h((string)($deployStatus['local_ref'] ?? '-')) ?> · <?= h($statusRemoteName) ?>/<?= h($statusBranch) ?>: <?= h((string)($deployStatus['remote_ref'] ?? '-')) ?> · behind: <?= (int)($deployStatus['behind'] ?? 0) ?> · ahead: <?= (int)($deployStatus['ahead'] ?? 0) ?></span>
           </div>
         <?php endif; ?>
 
