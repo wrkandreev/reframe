@@ -440,23 +440,16 @@ function currentUrlWithoutParams(array $keysToRemove): string
 function imageMimeForOutput(string $path, string $storedMime = ''): string
 {
     $stored = strtolower(trim($storedMime));
+    if (str_contains($stored, ';')) {
+        $stored = trim((string)explode(';', $stored, 2)[0]);
+    }
+
     $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if ($stored === 'image/pjpeg' || $stored === 'image/jpg') {
         $stored = 'image/jpeg';
     }
     if (in_array($stored, $allowed, true)) {
         return $stored;
-    }
-
-    $size = @getimagesize($path);
-    if (is_array($size)) {
-        $detected = strtolower((string)($size['mime'] ?? ''));
-        if ($detected === 'image/pjpeg' || $detected === 'image/jpg') {
-            $detected = 'image/jpeg';
-        }
-        if (in_array($detected, $allowed, true)) {
-            return $detected;
-        }
     }
 
     $ext = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
