@@ -457,7 +457,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
         <?php if ($activeSectionId > 0): ?>
           <form method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&mode=photos&section_id=<?= (int)$activeSectionId ?>">
             <input type="hidden" name="action" value="upload_before_bulk"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
-            <p><input type="file" name="before_bulk[]" accept="image/jpeg,image/png,image/webp,image/gif" multiple required></p>
+            <p><input type="file" name="before_bulk[]" accept=".jpg,.jpeg,image/jpeg,image/pjpeg,image/png,image/webp,image/gif" multiple required></p>
             <button class="btn" type="submit">Загрузить массово</button>
           </form>
           <p class="small">После загрузки имя (code_name) заполняется автоматически из имени файла — затем можно отредактировать.</p>
@@ -513,7 +513,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
 
                   <form class="inline-form js-after-upload-form" method="post" enctype="multipart/form-data" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos">
                     <input type="hidden" name="action" value="upload_after_file"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>"><input type="hidden" name="ajax" value="1">
-                    <input class="js-after-file-input" type="file" name="after" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
+                    <input class="js-after-file-input" type="file" name="after" accept=".jpg,.jpeg,image/jpeg,image/pjpeg,image/png,image/webp,image/gif" style="display:none">
                     <button class="btn btn-secondary btn-xs js-after-pick" type="button"><?= empty($p['after_file_id']) ? 'Загрузить фото после' : 'Изменить фото' ?></button>
                   </form>
                 </div>
@@ -588,11 +588,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
             </td><td><span class="small"><?= $activeDevices ?></span></td><td style="display:flex;gap:8px;flex-wrap:wrap">
               <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">
                 <input type="hidden" name="action" value="regenerate_commenter_token"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
-                <button class="btn" type="submit">Отозвать токен и сессии</button>
-              </form>
-              <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters">
-                <input type="hidden" name="action" value="revoke_commenter_sessions"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
-                <button class="btn btn-secondary" type="submit">Отозвать сессии</button>
+                <button class="btn" type="submit">Новая ссылка</button>
               </form>
               <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=commenters" onsubmit="return confirm('Удалить пользователя?')">
                 <input type="hidden" name="action" value="delete_commenter"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">

@@ -437,6 +437,38 @@ function currentUrlWithoutParams(array $keysToRemove): string
     return $path . ($params !== [] ? ('?' . http_build_query($params)) : '');
 }
 
+function imageMimeForOutput(string $path, string $storedMime = ''): string
+{
+    $stored = strtolower(trim($storedMime));
+    $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if ($stored === 'image/pjpeg' || $stored === 'image/jpg') {
+        $stored = 'image/jpeg';
+    }
+    if (in_array($stored, $allowed, true)) {
+        return $stored;
+    }
+
+    $size = @getimagesize($path);
+    if (is_array($size)) {
+        $detected = strtolower((string)($size['mime'] ?? ''));
+        if ($detected === 'image/pjpeg' || $detected === 'image/jpg') {
+            $detected = 'image/jpeg';
+        }
+        if (in_array($detected, $allowed, true)) {
+            return $detected;
+        }
+    }
+
+    $ext = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
+    return match ($ext) {
+        'jpg', 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        'gif' => 'image/gif',
+        default => 'application/octet-stream',
+    };
+}
+
 function imageIntrinsicSize(int $fileId): array
 {
     if ($fileId < 1) {
@@ -525,8 +557,10 @@ function serveImage(): never
         exit;
     }
 
+    $mime = imageMimeForOutput($abs, (string)($f['mime_type'] ?? ''));
+
     if ((string)$f['kind'] !== 'after') {
-        header('Content-Type: ' . ((string)$f['mime_type'] ?: 'application/octet-stream'));
+        header('Content-Type: ' . $mime);
         header('Content-Length: ' . (string)filesize($abs));
         header('Cache-Control: private, max-age=60');
         header('X-Robots-Tag: noindex, nofollow');
@@ -534,7 +568,7 @@ function serveImage(): never
         exit;
     }
 
-    outputWatermarked($abs, (string)$f['mime_type']);
+    outputWatermarked($abs, $mime);
 }
 
 function serveThumb(): never
@@ -726,6 +760,13 @@ function outputWatermarked(string $path, string $mime): never
     .sidebar-toggle,.sidebar-close{border:1px solid #d1d5db;background:#fff;color:#1f2937;border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;cursor:pointer}
     .sidebar-close{display:none;width:34px;height:34px;padding:0;line-height:1;font-size:24px}
     .sidebar-backdrop{display:none}
+    .auth-popup{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(17,24,39,.42);padding:18px}
+    .auth-popup.is-open{display:flex}
+    .auth-popup-card{width:min(460px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;box-shadow:0 18px 48px rgba(15,23,42,.32)}
+    .auth-popup-title{margin:0 0 8px;font-size:18px;line-height:1.3}
+    .auth-popup-text{margin:0;font-size:14px;line-height:1.45;color:#374151}
+    .auth-popup.is-error .auth-popup-text{color:#991b1b}
+    .auth-popup-actions{margin:12px 0 0;display:flex;justify-content:flex-end}
 
     @media (max-width:900px){
       .topbar{display:flex}
@@ -806,7 +847,6 @@ function outputWatermarked(string $path, string $mime): never
       <?php endif; ?>
       <div class="nav-group">
         <p class="note" style="margin:0"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
-        <p class="note js-viewer-auth-feedback" style="margin:6px 0 0" hidden></p>
       </div>
     </aside>
     <main>
@@ -935,6 +975,13 @@ function outputWatermarked(string $path, string $mime): never
     <div class="mobile-nav-meta"><?= h($catalogLocationLabel !== '' ? $catalogLocationLabel : 'Каталог') ?><?= $photos !== [] ? ' · ' . count($photos) : '' ?></div>
   </nav>
 <?php endif; ?>
+<div class="auth-popup js-viewer-auth-popup" hidden>
+  <section class="auth-popup-card" role="dialog" aria-modal="true" aria-labelledby="viewerAuthPopupTitle">
+    <h3 id="viewerAuthPopupTitle" class="auth-popup-title">Доступ к комментариям</h3>
+    <p class="auth-popup-text js-viewer-auth-popup-text"></p>
+    <p class="auth-popup-actions"><button class="btn js-viewer-auth-popup-close" type="button">Понятно</button></p>
+  </section>
+</div>
 <script>
 (() => {
   document.querySelectorAll('img').forEach((img) => {
@@ -1069,35 +1116,77 @@ function outputWatermarked(string $path, string $mime): never
 })();
 
 (() => {
-  const feedback = document.querySelector('.js-viewer-auth-feedback');
+  const popup = document.querySelector('.js-viewer-auth-popup');
+  const popupText = popup ? popup.querySelector('.js-viewer-auth-popup-text') : null;
+  const popupClose = popup ? popup.querySelector('.js-viewer-auth-popup-close') : null;
+  const popupStorageKey = 'viewer-auth-popup';
+
+  const hidePopup = () => {
+    if (!popup || !popupText) {
+      return;
+    }
+    popup.classList.remove('is-open', 'is-error');
+    popup.hidden = true;
+    popupText.textContent = '';
+  };
+
+  const showPopup = (message, isError) => {
+    if (!popup || !popupText || !message) {
+      return;
+    }
+    popupText.textContent = message;
+    popup.hidden = false;
+    popup.classList.add('is-open');
+    popup.classList.toggle('is-error', !!isError);
+  };
+
+  if (popup && popupClose) {
+    popupClose.addEventListener('click', hidePopup);
+    popup.addEventListener('click', (e) => {
+      if (e.target === popup) {
+        hidePopup();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && popup.classList.contains('is-open')) {
+        hidePopup();
+      }
+    });
+  }
+
+  try {
+    const savedRaw = sessionStorage.getItem(popupStorageKey);
+    if (savedRaw) {
+      sessionStorage.removeItem(popupStorageKey);
+      const saved = JSON.parse(savedRaw);
+      const message = saved && typeof saved.message === 'string' ? saved.message : '';
+      const isError = !!(saved && saved.isError);
+      if (message !== '') {
+        showPopup(message, isError);
+      }
+    }
+  } catch {
+    // no-op
+  }
+
   const url = new URL(window.location.href);
   const viewerId = Number(url.searchParams.get('viewer_id') || 0);
   const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
-  if (!Number.isInteger(viewerId) || viewerId < 1 || hash === '') {
+  if (!Number.isInteger(viewerId) || viewerId < 1) {
+    return;
+  }
+
+  if (hash === '') {
+    showPopup('Ссылка для комментариев недействительна.', true);
     return;
   }
 
   const hashParams = new URLSearchParams(hash);
   const viewerKey = String(hashParams.get('k') || '').trim();
   if (viewerKey === '') {
+    showPopup('Ссылка для комментариев недействительна.', true);
     return;
   }
-
-  const setFeedback = (message, isError) => {
-    if (!feedback) {
-      return;
-    }
-    if (!message) {
-      feedback.hidden = true;
-      feedback.textContent = '';
-      return;
-    }
-    feedback.hidden = false;
-    feedback.textContent = message;
-    feedback.style.color = isError ? '#b42318' : '#4b5563';
-  };
-
-  setFeedback('Проверяем персональную ссылку…', false);
 
   const formData = new FormData();
   formData.set('action', 'viewer_auth');
@@ -1125,8 +1214,19 @@ function outputWatermarked(string $path, string $mime): never
       if (!response.ok || !payload || payload.ok !== true) {
         const errorMessage = payload && payload.message
           ? String(payload.message)
-          : (raw.trim() !== '' ? raw.slice(0, 220) : 'Не удалось выполнить вход по ссылке.');
+          : (raw.trim() !== '' ? raw.slice(0, 220) : 'Ссылка для комментариев недействительна.');
         throw new Error(errorMessage);
+      }
+
+      const displayName = String(payload.display_name || '').trim();
+      const successMessage = displayName !== ''
+        ? `Теперь вы можете оставлять комментарии от пользователя: ${displayName}.`
+        : 'Теперь вы можете оставлять комментарии.';
+
+      try {
+        sessionStorage.setItem(popupStorageKey, JSON.stringify({ message: successMessage, isError: false }));
+      } catch {
+        // no-op
       }
 
       const cleanUrl = new URL(window.location.href);
@@ -1137,8 +1237,8 @@ function outputWatermarked(string $path, string $mime): never
     .catch((error) => {
       const message = error instanceof Error && error.message !== ''
         ? error.message
-        : 'Не удалось выполнить вход по ссылке.';
-      setFeedback(message, true);
+        : 'Ссылка для комментариев недействительна.';
+      showPopup(message, true);
     });
 })();
 

@@ -144,7 +144,14 @@ function saveBulkBefore(array $files, int $sectionId): array
 
 function saveSingleImage(array $file, string $baseName, int $sectionId): array
 {
-    $allowedMime = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+    $allowedMime = [
+        'image/jpeg' => ['ext' => 'jpg', 'mime' => 'image/jpeg'],
+        'image/pjpeg' => ['ext' => 'jpg', 'mime' => 'image/jpeg'],
+        'image/jpg' => ['ext' => 'jpg', 'mime' => 'image/jpeg'],
+        'image/png' => ['ext' => 'png', 'mime' => 'image/png'],
+        'image/webp' => ['ext' => 'webp', 'mime' => 'image/webp'],
+        'image/gif' => ['ext' => 'gif', 'mime' => 'image/gif'],
+    ];
     $err = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
     if ($err !== UPLOAD_ERR_OK) {
         throw new RuntimeException('Ошибка загрузки');
@@ -159,7 +166,17 @@ function saveSingleImage(array $file, string $baseName, int $sectionId): array
         throw new RuntimeException('Некорректный источник');
     }
 
-    $mime = mime_content_type($tmp) ?: '';
+    $mime = strtolower((string)(mime_content_type($tmp) ?: ''));
+    if (!isset($allowedMime[$mime])) {
+        $imgType = @exif_imagetype($tmp);
+        $mime = match ($imgType) {
+            IMAGETYPE_JPEG => 'image/jpeg',
+            IMAGETYPE_PNG => 'image/png',
+            IMAGETYPE_WEBP => 'image/webp',
+            IMAGETYPE_GIF => 'image/gif',
+            default => $mime,
+        };
+    }
     if (!isset($allowedMime[$mime])) {
         throw new RuntimeException('Недопустимый тип файла');
     }
@@ -170,7 +187,8 @@ function saveSingleImage(array $file, string $baseName, int $sectionId): array
         $safeBase = 'photo';
     }
 
-    $ext = $allowedMime[$mime];
+    $ext = $allowedMime[$mime]['ext'];
+    $normalizedMime = $allowedMime[$mime]['mime'];
     $root = dirname(__DIR__);
     $dir = $root . '/photos/section_' . $sectionId;
     if (!is_dir($dir)) {
@@ -188,7 +206,7 @@ function saveSingleImage(array $file, string $baseName, int $sectionId): array
 
     return [
         'path' => $storedRelPath,
-        'mime' => $mime,
+        'mime' => $normalizedMime,
         'size' => $size,
     ];
 }

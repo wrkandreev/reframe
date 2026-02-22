@@ -432,16 +432,7 @@ function adminHandlePostAction(string $action, bool $isAjax, string $projectRoot
                 $token = commenterRegenerateToken($id);
                 $revokedSessions = viewerSessionsRevokeByUser($id);
                 $link = buildViewerAccessLink($id, $token);
-                $message = 'Токен и сессии отозваны (' . $revokedSessions . ') | новая ссылка: ' . $link;
-            }
-            break;
-        }
-
-        case 'revoke_commenter_sessions': {
-            $id = (int)($_POST['id'] ?? 0);
-            if ($id > 0) {
-                $revokedSessions = viewerSessionsRevokeByUser($id);
-                $message = 'Сессии отозваны: ' . $revokedSessions;
+                $message = 'Новая ссылка создана (сессии отозваны: ' . $revokedSessions . ') | ссылка: ' . $link;
             }
             break;
         }
