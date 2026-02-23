@@ -1470,6 +1470,11 @@ function outputWatermarked(string $path, string $mime): never
   const catalogLinks = Array.from(document.querySelectorAll('#sidebar .nav-link'));
   const isCatalogGridMode = !prevPhotoLink && !nextPhotoLink && photoCards.length > 0;
   let selectedCardIndex = -1;
+  let suspendHoverSync = false;
+
+  document.addEventListener('pointermove', () => {
+    suspendHoverSync = false;
+  }, { passive: true });
 
   const setSelectedCard = (index, options = {}) => {
     if (!Number.isInteger(index) || index < 0 || index >= photoCards.length) {
@@ -1527,6 +1532,9 @@ function outputWatermarked(string $path, string $mime): never
     card.dataset.cardIndex = String(index);
     card.addEventListener('mouseenter', () => {
       if (isCatalogGridMode) {
+        if (suspendHoverSync) {
+          return;
+        }
         setSelectedCard(index);
       }
     });
@@ -1557,7 +1565,11 @@ function outputWatermarked(string $path, string $mime): never
       return false;
     }
 
-    return setSelectedCard(nextIndex, { focus: true, scroll: true });
+    const moved = setSelectedCard(nextIndex, { focus: true, scroll: true });
+    if (moved && isCatalogGridMode) {
+      suspendHoverSync = true;
+    }
+    return moved;
   };
 
   const movePhotoCardVertical = (direction) => {
@@ -1601,7 +1613,11 @@ function outputWatermarked(string $path, string $mime): never
       return false;
     }
 
-    return setSelectedCard(target.index, { focus: true, scroll: true });
+    const moved = setSelectedCard(target.index, { focus: true, scroll: true });
+    if (moved && isCatalogGridMode) {
+      suspendHoverSync = true;
+    }
+    return moved;
   };
 
   const openSelectedPhotoCard = () => {
