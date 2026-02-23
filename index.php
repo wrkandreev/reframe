@@ -695,6 +695,7 @@ function outputWatermarked(string $path, string $mime): never
     .sidebar{position:sticky;top:14px;align-self:start;max-height:calc(100dvh - 28px);overflow:auto}
     .nav-group{border-top:1px solid #e8edf5;padding-top:10px;margin-top:10px}
     .nav-group:first-of-type{border-top:0;margin-top:0;padding-top:0}
+    .nav-group.status-group{border-top:1px solid #e8edf5;padding-top:10px;margin-top:10px}
     .nav-summary{cursor:pointer;list-style:none;font-size:13px;font-weight:700;color:#374151;display:flex;align-items:center;justify-content:space-between;gap:8px}
     .nav-summary::-webkit-details-marker{display:none}
     .nav-summary::after{content:'▾';font-size:12px;color:#6b7280;transition:transform .18s ease}
@@ -767,6 +768,9 @@ function outputWatermarked(string $path, string $mime): never
       .topbar{display:flex}
       .topbar h1{font-size:22px}
       .page{grid-template-columns:1fr}
+      .is-home .page{display:flex;flex-direction:column}
+      .is-home main{order:1}
+      .is-home #sidebar{order:2}
       .sidebar{position:static;max-height:none}
       .pager{display:none}
       .detail-position-label{display:none}
@@ -776,9 +780,8 @@ function outputWatermarked(string $path, string $mime): never
       .mobile-photo-nav{grid-template-columns:auto 1fr}
       .mobile-catalog-nav{grid-template-columns:auto 1fr}
       .mobile-nav-link{padding:8px 10px;font-size:13px}
-      .mobile-photo-arrow{position:fixed;bottom:calc(82px + env(safe-area-inset-bottom));z-index:53;width:46px;height:46px;padding:0;border-radius:999px;font-size:24px;line-height:1;font-weight:700;box-shadow:0 8px 18px rgba(15,23,42,.22)}
-      .mobile-photo-prev{left:12px}
-      .mobile-photo-next{right:12px}
+      .mobile-photo-arrows{position:fixed;right:12px;bottom:calc(82px + env(safe-area-inset-bottom));z-index:53;display:flex;gap:8px}
+      .mobile-photo-arrow{width:46px;height:46px;padding:0;border-radius:999px;font-size:24px;line-height:1;font-weight:700;box-shadow:0 8px 18px rgba(15,23,42,.22)}
 
       .is-inner .sidebar-toggle{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
       .is-inner .sidebar{position:fixed;top:0;left:0;z-index:40;width:min(86vw,320px);height:100dvh;overflow-y:auto;border-radius:0 12px 12px 0;transform:translateX(-105%);transition:transform .2s ease;padding-top:18px;padding-bottom:calc(96px + env(safe-area-inset-bottom))}
@@ -843,7 +846,7 @@ function outputWatermarked(string $path, string $mime): never
           </div>
         </details>
       <?php endif; ?>
-      <div class="nav-group">
+      <div class="nav-group status-group">
         <p class="note" style="margin:0"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
       </div>
     </aside>
@@ -964,8 +967,10 @@ function outputWatermarked(string $path, string $mime): never
   <nav class="mobile-photo-nav" aria-label="Навигация по фото">
     <button class="mobile-nav-link js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
     <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
-    <a class="mobile-nav-link mobile-photo-arrow mobile-photo-prev js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">←</a>
-    <a class="mobile-nav-link mobile-photo-arrow mobile-photo-next js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">→</a>
+    <div class="mobile-photo-arrows">
+      <a class="mobile-nav-link mobile-photo-arrow js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">←</a>
+      <a class="mobile-nav-link mobile-photo-arrow js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">→</a>
+    </div>
   </nav>
 <?php elseif ($hasMobileCatalogNav): ?>
   <nav class="mobile-catalog-nav" aria-label="Навигация по каталогу">
