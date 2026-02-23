@@ -35,7 +35,7 @@ function commentsSearch(string $photoQuery, string $userQuery, int $limit = 200)
         $params['user'] = '%' . $userQuery . '%';
     }
 
-    $sql = 'SELECT c.id, c.photo_id, c.comment_text, c.created_at, p.code_name,
+    $sql = 'SELECT c.id, c.photo_id, c.comment_text, c.created_at, p.code_name, p.section_id,
                    bf.id AS before_file_id,
                    u.display_name
             FROM photo_comments c

@@ -133,7 +133,35 @@ $previewVersion = (string)time();
 $commentPhotoQuery = trim((string)($_GET['comment_photo'] ?? ($_POST['comment_photo'] ?? '')));
 $commentUserQuery = trim((string)($_GET['comment_user'] ?? ($_POST['comment_user'] ?? '')));
 $filteredComments = commentsSearch($commentPhotoQuery, $commentUserQuery, 200);
+
+$photoNameQuery = trim((string)($_GET['photo_name'] ?? ($_POST['photo_name'] ?? '')));
+$photoCommentsFilter = trim((string)($_GET['photo_comments'] ?? ($_POST['photo_comments'] ?? 'all')));
+if (!in_array($photoCommentsFilter, ['all', 'with_comments'], true)) {
+    $photoCommentsFilter = 'all';
+}
+
 $photoCommentCounts = commentCountsByPhotoIds(array_map(static fn(array $p): int => (int)$p['id'], $photos));
+$filteredPhotos = array_values(array_filter($photos, static function (array $photo) use ($photoCommentCounts, $photoNameQuery, $photoCommentsFilter): bool {
+    if ($photoCommentsFilter === 'with_comments' && (int)($photoCommentCounts[(int)$photo['id']] ?? 0) < 1) {
+        return false;
+    }
+
+    if ($photoNameQuery === '') {
+        return true;
+    }
+
+    $codeName = (string)($photo['code_name'] ?? '');
+    if ($codeName === '') {
+        return false;
+    }
+
+    if (function_exists('mb_stripos')) {
+        return mb_stripos($codeName, $photoNameQuery) !== false;
+    }
+
+    return stripos($codeName, $photoNameQuery) !== false;
+}));
+
 $topics = [];
 $topicRoots = [];
 $photoTopicsMap = [];
@@ -219,9 +247,11 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
     .comment-photo-cell{min-width:112px}
     .comment-photo-preview{display:block;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px;cursor:zoom-in}
     .comment-photo-name{margin-top:6px;line-height:1.3;overflow-wrap:anywhere;word-break:break-word}
+    .photo-search{display:grid;grid-template-columns:minmax(220px,1fr) minmax(200px,240px) auto auto;gap:8px;align-items:center;margin:10px 0 12px}
+    .photo-search .btn{height:36px}
     .comment-search{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto auto;gap:8px;align-items:center;margin-bottom:12px}
     .comment-search .btn{height:36px}
-    @media (max-width:760px){.comment-search{grid-template-columns:1fr}}
+    @media (max-width:760px){.photo-search,.comment-search{grid-template-columns:1fr}}
     @media (max-width:960px){.grid{grid-template-columns:1fr}.admin-sidebar{position:static;top:auto;max-height:none;overflow:visible}}
   </style>
 </head>
@@ -474,12 +504,27 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
         <?php if ($topicsError !== ''): ?>
           <p class="small" style="color:#b42318"><?= h($topicsError) ?></p>
         <?php endif; ?>
+        <form method="get" action="admin.php" class="photo-search">
+          <input type="hidden" name="token" value="<?= h($tokenIncoming) ?>">
+          <input type="hidden" name="mode" value="photos">
+          <input type="hidden" name="section_id" value="<?= (int)$activeSectionId ?>">
+          <input class="in" type="search" name="photo_name" value="<?= h($photoNameQuery) ?>" placeholder="Поиск по имени фото">
+          <select class="in" name="photo_comments">
+            <option value="all"<?= $photoCommentsFilter === 'all' ? ' selected' : '' ?>>Все</option>
+            <option value="with_comments"<?= $photoCommentsFilter === 'with_comments' ? ' selected' : '' ?>>С комментариями</option>
+          </select>
+          <button class="btn" type="submit">Применить</button>
+          <a class="btn btn-secondary" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos&section_id=<?= (int)$activeSectionId ?>">Сбросить</a>
+        </form>
         <table class="tbl">
           <tr><th>До</th><th>После</th><th>Поля</th><th>Действия</th></tr>
-          <?php foreach($photos as $p): ?>
+          <?php if ($filteredPhotos === []): ?>
+            <tr><td colspan="4" class="small">По фильтру ничего не найдено.</td></tr>
+          <?php endif; ?>
+          <?php foreach($filteredPhotos as $p): ?>
             <?php $photoCommentCount = (int)($photoCommentCounts[(int)$p['id']] ?? 0); ?>
             <?php $attachedTopics = $photoTopicsMap[(int)$p['id']] ?? []; ?>
-            <tr>
+            <tr id="photo-row-<?= (int)$p['id'] ?>">
               <td>
                 <?php if (!empty($p['before_file_id'])): ?>
                   <img class="js-open js-preview-image" data-photo-id="<?= (int)$p['id'] ?>" data-kind="before" data-full="index.php?action=image&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=thumb&file_id=<?= (int)$p['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" loading="lazy" decoding="async" style="cursor:zoom-in;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px">
@@ -633,6 +678,7 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
                 <td><?= h((string)$c['comment_text']) ?></td>
                 <td><?= h((string)$c['created_at']) ?></td>
                 <td>
+                  <a class="btn btn-secondary btn-xs" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos&section_id=<?= (int)($c['section_id'] ?? 0) ?>&photo_name=<?= urlencode((string)($c['code_name'] ?? '')) ?>&photo_comments=with_comments#photo-row-<?= (int)$c['photo_id'] ?>">К фото</a>
                   <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить комментарий?')">
                     <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><input type="hidden" name="comment_photo" value="<?= h($commentPhotoQuery) ?>"><input type="hidden" name="comment_user" value="<?= h($commentUserQuery) ?>">
                     <button class="btn btn-danger" type="submit">Удалить</button>
