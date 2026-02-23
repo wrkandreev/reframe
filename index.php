@@ -778,8 +778,9 @@ function outputWatermarked(string $path, string $mime): never
 
       .has-mobile-nav .app{padding-bottom:84px}
       .mobile-photo-nav,.mobile-catalog-nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);backdrop-filter:blur(6px);border-top:1px solid #e5e7eb}
-      .mobile-photo-nav{grid-template-columns:auto 1fr}
-      .mobile-catalog-nav{grid-template-columns:auto 1fr}
+      .mobile-photo-nav,.mobile-catalog-nav{grid-template-columns:1fr auto}
+      .mobile-photo-nav .mobile-nav-meta,.mobile-catalog-nav .mobile-nav-meta{order:1;text-align:left}
+      .mobile-photo-nav .js-sidebar-toggle,.mobile-catalog-nav .js-sidebar-toggle{order:2;justify-self:end}
       .mobile-nav-link{padding:8px 10px;font-size:13px}
       .mobile-photo-arrows{position:fixed;right:12px;bottom:calc(82px + env(safe-area-inset-bottom));z-index:53;display:flex;gap:8px}
       .mobile-photo-arrow{width:46px;height:46px;padding:0;border-radius:999px;font-size:24px;line-height:1;font-weight:700;box-shadow:0 8px 18px rgba(15,23,42,.22)}
