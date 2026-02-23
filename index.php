@@ -706,6 +706,7 @@ function outputWatermarked(string $path, string $mime): never
     .nav-link.active{background:#eef4ff;color:#1f6feb}
     .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
     .card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
+    .card.js-photo-card.is-selected{outline:2px solid #1f6feb;outline-offset:-2px;box-shadow:0 0 0 2px rgba(31,111,235,.18)}
     .card-badges{position:absolute;top:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;z-index:4;pointer-events:none}
     .card-badge{display:inline-flex;align-items:center;justify-content:center;background:rgba(17,24,39,.78);color:#fff;font-size:11px;line-height:1;padding:6px 7px;border-radius:999px}
     .card-badge.ai{background:rgba(31,111,235,.92)}
@@ -1446,6 +1447,17 @@ function outputWatermarked(string $path, string $mime): never
     return target.isContentEditable || !!target.closest('input, textarea, select, [contenteditable="true"]');
   };
 
+  const isBlockingInteractiveTarget = (target) => {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    const interactive = target.closest('button, summary, [role="button"], a');
+    if (!interactive) {
+      return false;
+    }
+    return !interactive.classList.contains('js-photo-card');
+  };
+
   const enabledNavLink = (selector) => {
     const links = Array.from(document.querySelectorAll(selector));
     return links.find((link) => !link.classList.contains('disabled') && link.getAttribute('aria-disabled') !== 'true') || null;
@@ -1455,41 +1467,153 @@ function outputWatermarked(string $path, string $mime): never
   const nextPhotoLink = enabledNavLink('.js-next-photo');
   const photoCards = Array.from(document.querySelectorAll('.js-photo-card'));
   const catalogLinks = Array.from(document.querySelectorAll('#sidebar .nav-link'));
-  let hoveredCardIndex = -1;
+  const isCatalogGridMode = !prevPhotoLink && !nextPhotoLink && photoCards.length > 0;
+  let selectedCardIndex = -1;
+
+  const setSelectedCard = (index, options = {}) => {
+    if (!Number.isInteger(index) || index < 0 || index >= photoCards.length) {
+      return false;
+    }
+
+    const target = photoCards[index];
+    if (!target) {
+      return false;
+    }
+
+    if (selectedCardIndex >= 0 && selectedCardIndex < photoCards.length) {
+      photoCards[selectedCardIndex].classList.remove('is-selected');
+    }
+
+    selectedCardIndex = index;
+    target.classList.add('is-selected');
+
+    if (options.focus) {
+      if (typeof target.focus === 'function') {
+        try {
+          target.focus({ preventScroll: true });
+        } catch {
+          target.focus();
+        }
+      }
+    }
+
+    if (options.scroll) {
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+
+    return true;
+  };
+
+  const selectedOrDefaultCardIndex = () => {
+    if (Number.isInteger(selectedCardIndex) && selectedCardIndex >= 0 && selectedCardIndex < photoCards.length) {
+      return selectedCardIndex;
+    }
+
+    if (document.activeElement instanceof HTMLElement) {
+      const focusedCard = document.activeElement.closest('.js-photo-card');
+      if (focusedCard) {
+        const focusedIndex = Number(focusedCard.dataset.cardIndex || -1);
+        if (Number.isInteger(focusedIndex) && focusedIndex >= 0 && focusedIndex < photoCards.length) {
+          return focusedIndex;
+        }
+      }
+    }
+
+    return 0;
+  };
 
   photoCards.forEach((card, index) => {
     card.dataset.cardIndex = String(index);
     card.addEventListener('mouseenter', () => {
-      hoveredCardIndex = index;
+      if (isCatalogGridMode) {
+        setSelectedCard(index);
+      }
     });
     card.addEventListener('focus', () => {
-      hoveredCardIndex = index;
+      if (isCatalogGridMode) {
+        setSelectedCard(index);
+      }
+    });
+    card.addEventListener('click', () => {
+      if (isCatalogGridMode) {
+        setSelectedCard(index);
+      }
     });
   });
 
-  const navigatePhotoCards = (direction) => {
+  if (isCatalogGridMode) {
+    setSelectedCard(0);
+  }
+
+  const movePhotoCardLinear = (direction) => {
     if (photoCards.length === 0) {
       return false;
     }
 
-    const focusedCard = document.activeElement instanceof HTMLElement
-      ? document.activeElement.closest('.js-photo-card')
-      : null;
-    let currentIndex = focusedCard ? Number(focusedCard.dataset.cardIndex || 0) : hoveredCardIndex;
-
-    if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= photoCards.length) {
-      currentIndex = direction > 0 ? -1 : photoCards.length;
-    }
-
+    const currentIndex = selectedOrDefaultCardIndex();
     const nextIndex = Math.max(0, Math.min(photoCards.length - 1, currentIndex + direction));
     if (nextIndex === currentIndex) {
       return false;
     }
 
-    const targetCard = photoCards[nextIndex];
+    return setSelectedCard(nextIndex, { focus: true, scroll: true });
+  };
+
+  const movePhotoCardVertical = (direction) => {
+    if (photoCards.length === 0) {
+      return false;
+    }
+
+    const currentIndex = selectedOrDefaultCardIndex();
+    const current = photoCards[currentIndex];
+    if (!current) {
+      return false;
+    }
+
+    const currentTop = current.offsetTop;
+    const currentCenterX = current.offsetLeft + current.offsetWidth / 2;
+    const candidates = photoCards
+      .map((card, index) => ({
+        index,
+        top: card.offsetTop,
+        centerX: card.offsetLeft + card.offsetWidth / 2,
+      }))
+      .filter((item) => direction > 0 ? item.top > currentTop + 2 : item.top < currentTop - 2);
+
+    if (candidates.length === 0) {
+      return false;
+    }
+
+    const targetTop = direction > 0
+      ? Math.min(...candidates.map((item) => item.top))
+      : Math.max(...candidates.map((item) => item.top));
+
+    const sameRowCandidates = candidates.filter((item) => Math.abs(item.top - targetTop) <= 8);
+    const target = sameRowCandidates.reduce((best, item) => {
+      if (!best) {
+        return item;
+      }
+      return Math.abs(item.centerX - currentCenterX) < Math.abs(best.centerX - currentCenterX) ? item : best;
+    }, null);
+
+    if (!target) {
+      return false;
+    }
+
+    return setSelectedCard(target.index, { focus: true, scroll: true });
+  };
+
+  const openSelectedPhotoCard = () => {
+    if (photoCards.length === 0) {
+      return false;
+    }
+
+    const currentIndex = selectedOrDefaultCardIndex();
+    const targetCard = photoCards[currentIndex];
     if (!targetCard || !targetCard.href) {
       return false;
     }
+
     window.location.href = targetCard.href;
     return true;
   };
@@ -1540,6 +1664,10 @@ function outputWatermarked(string $path, string $mime): never
       return;
     }
 
+    if (isBlockingInteractiveTarget(target)) {
+      return;
+    }
+
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) {
       return;
     }
@@ -1550,7 +1678,7 @@ function outputWatermarked(string $path, string $mime): never
         window.location.href = prevPhotoLink.href;
         return;
       }
-      if (navigatePhotoCards(-1)) {
+      if (movePhotoCardLinear(-1)) {
         e.preventDefault();
       }
       return;
@@ -1562,7 +1690,21 @@ function outputWatermarked(string $path, string $mime): never
         window.location.href = nextPhotoLink.href;
         return;
       }
-      if (navigatePhotoCards(1)) {
+      if (movePhotoCardLinear(1)) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (movePhotoCardVertical(e.key === 'ArrowDown' ? 1 : -1)) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      if (isCatalogGridMode && openSelectedPhotoCard()) {
         e.preventDefault();
       }
     }
