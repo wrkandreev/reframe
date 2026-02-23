@@ -768,6 +768,7 @@ function outputWatermarked(string $path, string $mime): never
       .topbar{display:flex}
       .topbar h1{font-size:22px}
       .page{grid-template-columns:1fr}
+      .cards .cap{text-align:center}
       .is-home .page{display:flex;flex-direction:column}
       .is-home main{order:1}
       .is-home #sidebar{order:2}
