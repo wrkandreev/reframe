@@ -233,7 +233,11 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
     .topic-delete-btn{height:36px;margin:0}
     .topic-children{display:grid;gap:8px;margin-top:8px}
     @media (max-width:900px){.topic-line{flex-direction:column}.topic-row{grid-template-columns:1fr 110px;width:100%}.topic-row .btn,.topic-delete-btn{width:100%}}
-    .row-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+    .row-actions{display:grid;gap:6px;min-width:132px}
+    .action-stack{display:grid;gap:6px;min-width:132px}
+    .action-stack form,.row-actions form{margin:0}
+    .action-btn{width:100%;height:32px;padding:0 10px;font-size:12px}
+    .action-btn.is-disabled{opacity:.55;pointer-events:none}
     .modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px}
     .modal[hidden]{display:none}
     .modal-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.44)}
@@ -602,14 +606,14 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
                 <div class="row-actions">
                   <div class="js-comment-indicator" data-photo-id="<?= (int)$p['id'] ?>" data-photo-name="<?= h((string)$p['code_name']) ?>">
                     <?php if ($photoCommentCount > 0): ?>
-                      <button class="btn btn-secondary btn-xs js-open-comments" type="button" data-photo-id="<?= (int)$p['id'] ?>" data-photo-name="<?= h((string)$p['code_name']) ?>" data-comment-count="<?= $photoCommentCount ?>">Комментарии (<?= $photoCommentCount ?>)</button>
+                      <button class="btn btn-secondary btn-xs action-btn js-open-comments" type="button" data-photo-id="<?= (int)$p['id'] ?>" data-photo-name="<?= h((string)$p['code_name']) ?>" data-comment-count="<?= $photoCommentCount ?>">Комментарии (<?= $photoCommentCount ?>)</button>
                     <?php else: ?>
-                      <span class="small">Комментариев нет</span>
+                      <button class="btn btn-secondary btn-xs action-btn is-disabled" type="button" aria-disabled="true">Комментарии (0)</button>
                     <?php endif; ?>
                   </div>
                   <form class="inline-form" method="post" action="?token=<?= urlencode($tokenIncoming) ?>&section_id=<?= (int)$activeSectionId ?>&mode=photos" onsubmit="return confirm('Удалить фото?')">
                     <input type="hidden" name="action" value="photo_delete"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="photo_id" value="<?= (int)$p['id'] ?>">
-                    <button class="btn btn-danger" type="submit">Удалить</button>
+                    <button class="btn btn-danger btn-xs action-btn" type="submit">Удалить</button>
                   </form>
                 </div>
               </td>
@@ -678,11 +682,13 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
                 <td><?= h((string)$c['comment_text']) ?></td>
                 <td><?= h((string)$c['created_at']) ?></td>
                 <td>
-                  <a class="btn btn-secondary btn-xs" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos&section_id=<?= (int)($c['section_id'] ?? 0) ?>&photo_name=<?= urlencode((string)($c['code_name'] ?? '')) ?>&photo_comments=with_comments#photo-row-<?= (int)$c['photo_id'] ?>">К фото</a>
+                  <div class="action-stack">
+                    <a class="btn btn-secondary btn-xs action-btn" href="?token=<?= urlencode($tokenIncoming) ?>&mode=photos&section_id=<?= (int)($c['section_id'] ?? 0) ?>&photo_name=<?= urlencode((string)($c['code_name'] ?? '')) ?>&photo_comments=with_comments#photo-row-<?= (int)$c['photo_id'] ?>">К фото</a>
                   <form method="post" action="?token=<?= urlencode($tokenIncoming) ?>&mode=comments" onsubmit="return confirm('Удалить комментарий?')">
                     <input type="hidden" name="action" value="delete_comment"><input type="hidden" name="token" value="<?= h($tokenIncoming) ?>"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><input type="hidden" name="comment_photo" value="<?= h($commentPhotoQuery) ?>"><input type="hidden" name="comment_user" value="<?= h($commentUserQuery) ?>">
-                    <button class="btn btn-danger" type="submit">Удалить</button>
+                    <button class="btn btn-danger btn-xs action-btn" type="submit">Удалить</button>
                   </form>
+                  </div>
                 </td>
               </tr>
             <?php endforeach; ?>
@@ -1132,21 +1138,22 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
   const renderCommentIndicator = (photoId, photoName, count) => {
     document.querySelectorAll(`.js-comment-indicator[data-photo-id="${photoId}"]`).forEach((wrap) => {
       wrap.textContent = '';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-secondary btn-xs action-btn';
+
       if (count > 0) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn btn-secondary btn-xs js-open-comments';
+        btn.classList.add('js-open-comments');
         btn.dataset.photoId = String(photoId);
         btn.dataset.photoName = photoName;
         btn.dataset.commentCount = String(count);
-        btn.textContent = `Комментарии (${count})`;
-        wrap.appendChild(btn);
       } else {
-        const span = document.createElement('span');
-        span.className = 'small';
-        span.textContent = 'Комментариев нет';
-        wrap.appendChild(span);
+        btn.classList.add('is-disabled');
+        btn.setAttribute('aria-disabled', 'true');
       }
+
+      btn.textContent = `Комментарии (${count})`;
+      wrap.appendChild(btn);
     });
   };
 
