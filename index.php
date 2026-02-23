@@ -703,7 +703,7 @@ function outputWatermarked(string $path, string $mime): never
     .nav-list{display:grid;gap:6px;margin-top:8px}
     .nav-link{display:block;padding:10px 12px;border-radius:10px;line-height:1.35;text-decoration:none;color:#111;font-size:13px}
     .nav-link.level-1{padding-left:24px}
-    .nav-link.active{background:#eef4ff;color:#1f6feb}
+    .nav-link.active{background:#eef4ff;color:#1f6feb;box-shadow:inset 0 0 0 1px #1f6feb}
     .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
     .card{display:block;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
     .card.js-photo-card.is-selected{box-shadow:0 0 0 2px rgba(31,111,235,.18)}
@@ -771,6 +771,8 @@ function outputWatermarked(string $path, string $mime): never
       .topbar h1{font-size:22px}
       .page{grid-template-columns:1fr}
       .cards .cap{text-align:center}
+      .card.js-photo-card.is-selected{box-shadow:none}
+      .card.js-photo-card.is-selected::after{display:none}
       .is-home .page{display:flex;flex-direction:column}
       .is-home main{order:1}
       .is-home #sidebar{order:2}
