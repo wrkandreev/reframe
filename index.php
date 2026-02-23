@@ -705,8 +705,9 @@ function outputWatermarked(string $path, string $mime): never
     .nav-link.level-1{padding-left:24px}
     .nav-link.active{background:#eef4ff;color:#1f6feb}
     .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
-    .card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
-    .card.js-photo-card.is-selected{outline:2px solid #1f6feb;outline-offset:-2px;box-shadow:0 0 0 2px rgba(31,111,235,.18)}
+    .card{display:block;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
+    .card.js-photo-card.is-selected{box-shadow:0 0 0 2px rgba(31,111,235,.18)}
+    .card.js-photo-card.is-selected::after{content:'';position:absolute;inset:0;z-index:8;border:2px solid #1f6feb;border-radius:10px;pointer-events:none}
     .card-badges{position:absolute;top:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;z-index:4;pointer-events:none}
     .card-badge{display:inline-flex;align-items:center;justify-content:center;background:rgba(17,24,39,.78);color:#fff;font-size:11px;line-height:1;padding:6px 7px;border-radius:999px}
     .card-badge.ai{background:rgba(31,111,235,.92)}
@@ -1646,6 +1647,18 @@ function outputWatermarked(string $path, string $mime): never
     return true;
   };
 
+  const navigateToCurrentCatalog = () => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('photo_id')) {
+      return false;
+    }
+
+    url.searchParams.delete('photo_id');
+    const nextUrl = url.pathname + (url.searchParams.toString() !== '' ? `?${url.searchParams.toString()}` : '');
+    window.location.href = nextUrl;
+    return true;
+  };
+
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || e.isComposing) {
       return;
@@ -1659,6 +1672,13 @@ function outputWatermarked(string $path, string $mime): never
     if ((e.shiftKey || e.ctrlKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       const direction = e.key === 'ArrowDown' ? 1 : -1;
       if (navigateCatalog(direction)) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if ((e.shiftKey || e.ctrlKey) && e.key === 'ArrowLeft') {
+      if (navigateToCurrentCatalog()) {
         e.preventDefault();
       }
       return;
