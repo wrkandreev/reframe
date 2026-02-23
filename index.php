@@ -688,8 +688,9 @@ function outputWatermarked(string $path, string $mime): never
   <style>
     .note{color:#6b7280;font-size:13px}
     .topbar{display:none;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-    .topbar h1{margin:0;font-size:24px;line-height:1.2}
+    .topbar h1{margin:0;font-size:24px;line-height:1.2;overflow-wrap:anywhere;word-break:break-word}
     .page{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr)}
+    .page > *{min-width:0}
     .panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px}
     .sidebar{position:sticky;top:14px;align-self:start;max-height:calc(100dvh - 28px);overflow:auto}
     .nav-group{border-top:1px solid #e8edf5;padding-top:10px;margin-top:10px}
@@ -718,12 +719,12 @@ function outputWatermarked(string $path, string $mime): never
     .detail-frame-head-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     .catalog-overview{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px}
     .catalog-overview-count{margin-left:auto}
-    .detail-label{font-size:12px;font-weight:600;color:#4b5563;line-height:1.35}
+    .detail-label{font-size:12px;font-weight:600;color:#4b5563;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
     .detail-position-label{margin-left:auto}
-    .detail-title{margin:0 0 6px;font-size:24px;line-height:1.2}
+    .detail-title{margin:0 0 6px;font-size:24px;line-height:1.2;overflow-wrap:anywhere;word-break:break-word}
     .detail-meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
-    .detail-meta-link{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #dbe3ef;background:#f8fbff;color:#1f3b7a;text-decoration:none;font-size:12px;line-height:1.25}
-    .detail-description{margin:0 0 10px;line-height:1.5;white-space:pre-wrap}
+    .detail-meta-link{display:inline-flex;align-items:center;max-width:100%;padding:6px 10px;border-radius:999px;border:1px solid #dbe3ef;background:#f8fbff;color:#1f3b7a;text-decoration:none;font-size:12px;line-height:1.25;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+    .detail-description{margin:0 0 10px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
     .detail-comments-title{margin:18px 0 10px;font-size:18px;line-height:1.3}
     .comment-form{display:grid;gap:10px;margin-bottom:6px}
     .comment-input{width:100%;min-height:94px;border:1px solid #d1d5db;border-radius:10px;padding:10px;line-height:1.45;resize:vertical}
@@ -762,6 +763,7 @@ function outputWatermarked(string $path, string $mime): never
     .auth-popup-actions{margin:12px 0 0;display:flex;justify-content:flex-end}
 
     @media (max-width:900px){
+      body{overflow-x:hidden}
       .topbar{display:flex}
       .topbar h1{font-size:22px}
       .page{grid-template-columns:1fr}
@@ -771,12 +773,15 @@ function outputWatermarked(string $path, string $mime): never
 
       .has-mobile-nav .app{padding-bottom:84px}
       .mobile-photo-nav,.mobile-catalog-nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:grid;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);backdrop-filter:blur(6px);border-top:1px solid #e5e7eb}
-      .mobile-photo-nav{grid-template-columns:auto 1fr auto auto}
+      .mobile-photo-nav{grid-template-columns:auto 1fr}
       .mobile-catalog-nav{grid-template-columns:auto 1fr}
       .mobile-nav-link{padding:8px 10px;font-size:13px}
+      .mobile-photo-arrow{position:fixed;bottom:calc(82px + env(safe-area-inset-bottom));z-index:53;width:46px;height:46px;padding:0;border-radius:999px;font-size:24px;line-height:1;font-weight:700;box-shadow:0 8px 18px rgba(15,23,42,.22)}
+      .mobile-photo-prev{left:12px}
+      .mobile-photo-next{right:12px}
 
       .is-inner .sidebar-toggle{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
-      .is-inner .sidebar{position:fixed;top:0;left:0;z-index:40;width:min(86vw,320px);height:100dvh;overflow-y:auto;border-radius:0 12px 12px 0;transform:translateX(-105%);transition:transform .2s ease;padding-top:18px}
+      .is-inner .sidebar{position:fixed;top:0;left:0;z-index:40;width:min(86vw,320px);height:100dvh;overflow-y:auto;border-radius:0 12px 12px 0;transform:translateX(-105%);transition:transform .2s ease;padding-top:18px;padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       .is-inner.sidebar-open .sidebar{transform:translateX(0)}
       .is-inner .sidebar-close{display:inline-flex;align-items:center;justify-content:center}
       .is-inner .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:30;border:0;padding:0;background:rgba(17,24,39,.45);opacity:0;pointer-events:none;transition:opacity .2s ease}
@@ -959,8 +964,8 @@ function outputWatermarked(string $path, string $mime): never
   <nav class="mobile-photo-nav" aria-label="Навигация по фото">
     <button class="mobile-nav-link js-sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Меню</button>
     <div class="mobile-nav-meta">Фото <?= (int)$detailIndex ?> из <?= (int)$detailTotal ?><?= $detailLocationLabel !== '' ? ' ' . h($detailLocationLabel) : '' ?></div>
-    <a class="mobile-nav-link js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">←</a>
-    <a class="mobile-nav-link js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">→</a>
+    <a class="mobile-nav-link mobile-photo-arrow mobile-photo-prev js-prev-photo" href="?photo_id=<?= (int)($prevPhotoId > 0 ? $prevPhotoId : $lastPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">←</a>
+    <a class="mobile-nav-link mobile-photo-arrow mobile-photo-next js-next-photo" href="?photo_id=<?= (int)($nextPhotoId > 0 ? $nextPhotoId : $firstPhotoId) ?><?= $isTopicMode ? '&topic_id=' . $activeTopicId : '&section_id=' . (int)$detailSectionId ?>" aria-disabled="false">→</a>
   </nav>
 <?php elseif ($hasMobileCatalogNav): ?>
   <nav class="mobile-catalog-nav" aria-label="Навигация по каталогу">

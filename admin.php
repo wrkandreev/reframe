@@ -216,6 +216,9 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
     .comment-row:first-child{border-top:0;padding-top:0}
     .comment-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
     .comment-row-body{white-space:pre-wrap}
+    .comment-photo-cell{min-width:112px}
+    .comment-photo-preview{display:block;width:100px;height:70px;object-fit:cover;border:1px solid #e5e7eb;border-radius:6px;cursor:zoom-in}
+    .comment-photo-name{margin-top:6px;line-height:1.3;overflow-wrap:anywhere;word-break:break-word}
     .comment-search{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto auto;gap:8px;align-items:center;margin-bottom:12px}
     .comment-search .btn{height:36px}
     @media (max-width:760px){.comment-search{grid-template-columns:1fr}}
@@ -618,7 +621,14 @@ function assetUrl(string $path): string { $f=__DIR__ . '/' . ltrim($path,'/'); $
           <table class="tbl"><tr><th>Фото</th><th>Пользователь</th><th>Комментарий</th><th>Дата</th><th></th></tr>
             <?php foreach($filteredComments as $c): ?>
               <tr>
-                <td><?= h((string)$c['code_name']) ?></td>
+                <td class="comment-photo-cell">
+                  <?php if (!empty($c['before_file_id'])): ?>
+                    <img class="js-open comment-photo-preview" data-full="index.php?action=image&file_id=<?= (int)$c['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" src="index.php?action=thumb&file_id=<?= (int)$c['before_file_id'] ?>&v=<?= urlencode($previewVersion) ?>" alt="">
+                  <?php else: ?>
+                    <div class="small">Без превью</div>
+                  <?php endif; ?>
+                  <div class="small comment-photo-name"><?= h((string)$c['code_name']) ?></div>
+                </td>
                 <td><?= h((string)($c['display_name'] ?? '—')) ?></td>
                 <td><?= h((string)$c['comment_text']) ?></td>
                 <td><?= h((string)$c['created_at']) ?></td>

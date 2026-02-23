@@ -35,9 +35,12 @@ function commentsSearch(string $photoQuery, string $userQuery, int $limit = 200)
         $params['user'] = '%' . $userQuery . '%';
     }
 
-    $sql = 'SELECT c.id, c.photo_id, c.comment_text, c.created_at, p.code_name, u.display_name
+    $sql = 'SELECT c.id, c.photo_id, c.comment_text, c.created_at, p.code_name,
+                   bf.id AS before_file_id,
+                   u.display_name
             FROM photo_comments c
             JOIN photos p ON p.id=c.photo_id
+            LEFT JOIN photo_files bf ON bf.photo_id=p.id AND bf.kind="before"
             LEFT JOIN comment_users u ON u.id=c.user_id';
 
     if ($where !== []) {
