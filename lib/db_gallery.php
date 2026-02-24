@@ -430,6 +430,16 @@ function viewerSessionsRevokeByUser(int $userId): int
     return $st->rowCount();
 }
 
+function viewerSessionRevokeByToken(string $sessionToken): void
+{
+    $sessionHash = hash('sha256', $sessionToken);
+    $st = db()->prepare('UPDATE viewer_sessions
+                         SET revoked_at = NOW()
+                         WHERE session_hash=:sh
+                           AND revoked_at IS NULL');
+    $st->execute(['sh' => $sessionHash]);
+}
+
 function commentsByPhoto(int $photoId): array
 {
     $sql = 'SELECT c.*, u.display_name

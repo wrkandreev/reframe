@@ -68,6 +68,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $postAction === 'viewer_auth') {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $postAction === 'viewer_logout') {
+    $sessionToken = trim((string)($_COOKIE[$viewerSessionCookie] ?? ''));
+    if ($sessionToken !== '') {
+        try {
+            viewerSessionRevokeByToken($sessionToken);
+        } catch (Throwable) {
+            // no-op
+        }
+    }
+
+    clearViewerCookies($viewerSessionCookie, $viewerDeviceCookie);
+    $redirect = currentUrlWithoutParams(['viewer', 'viewer_id']);
+    header('Location: ' . $redirect);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'add_comment') {
     $photoId = (int)($_POST['photo_id'] ?? 0);
     $sectionId = (int)($_POST['section_id'] ?? 0);
@@ -687,6 +703,7 @@ function outputWatermarked(string $path, string $mime): never
   <link rel="stylesheet" href="<?= h(assetUrl('style.css')) ?>">
   <style>
     .note{color:#6b7280;font-size:13px}
+    .sidebar-status-actions{margin-top:8px}
     .topbar{display:none;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
     .topbar h1{margin:0;font-size:24px;line-height:1.2;overflow-wrap:anywhere;word-break:break-word}
     .page{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr)}
@@ -854,6 +871,12 @@ function outputWatermarked(string $path, string $mime): never
       <?php endif; ?>
       <div class="nav-group status-group">
         <p class="note" style="margin:0"><?= $viewer ? 'Вы авторизованы для комментариев: ' . h((string)$viewer['display_name']) : 'Режим просмотра' ?></p>
+        <?php if ($viewer): ?>
+          <form method="post" action="" class="sidebar-status-actions">
+            <input type="hidden" name="action" value="viewer_logout">
+            <button class="btn btn-secondary" type="submit">Выйти</button>
+          </form>
+        <?php endif; ?>
       </div>
     </aside>
     <main>
